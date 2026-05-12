@@ -4,12 +4,6 @@ import { useApp } from "@/context/AppContext";
 
 const DEMO_MODE = (import.meta.env.VITE_DEMO_MODE ?? "true") === "true";
 
-/**
- * GoogleSignInButton — a Sealed-styled "Continue with Google" button that
- * uses the OAuth 2.0 authorization-code flow in a popup. The Google
- * authorization code is sent to our backend (POST /api/auth/google), which
- * exchanges it for tokens, verifies the ID token, and returns our JWT.
- */
 export function GoogleSignInButton({
   onSuccess,
   onError,
@@ -40,7 +34,6 @@ export function GoogleSignInButton({
     onError: () => onError?.("Google sign-in was cancelled."),
   });
 
-  // In demo mode the button is a shortcut into the mock vault.
   const onClick = () => {
     if (DEMO_MODE) {
       setPending(true);
@@ -57,9 +50,7 @@ export function GoogleSignInButton({
       type="button"
       onClick={onClick}
       disabled={pending}
-      className={`btn-ink !bg-paper-alt !text-ink !border-hairline hover:!bg-ink hover:!text-paper hover:!border-ink transition-all ${
-        fullWidth ? "w-full" : ""
-      }`}
+      className={`btn-secondary ${fullWidth ? "w-full" : ""}`}
     >
       <GoogleGlyph />
       <span>{pending ? "Just a moment…" : label}</span>

@@ -29,132 +29,106 @@ export default function CreateVault() {
 
   return (
     <Layout showFooter={false}>
-      <div className="container py-16 md:py-24">
-        <div className="max-w-3xl mx-auto">
-          <header className="mb-12 fade-in-up">
-            <p className="eyebrow mb-5">Step II · of III</p>
-            <h1 className="display-serif text-5xl md:text-6xl leading-[0.98] text-balance">
-              Tell us where <br />
-              <span className="italic-serif text-seal">to send word.</span>
-            </h1>
-            <p className="mt-6 text-lg text-ink-muted max-w-xl">
-              We keep two things on file: your own details, and the person you
-              would want us to speak to if something happened to you.
-            </p>
-          </header>
+      <div className="container py-10 md:py-14 max-w-2xl">
+        <header className="mb-10">
+          <h1 className="text-3xl md:text-4xl font-bold text-foreground mb-3">
+            Set up your vault
+          </h1>
+          <p className="text-lg text-muted-foreground">
+            Your own details, and the person we should contact in an emergency.
+          </p>
+        </header>
 
-          <form
-            onSubmit={onSubmit}
-            className="space-y-16 paper-card p-8 md:p-14 fade-in-up delay-200"
-            style={{ borderRadius: "2px" }}
+        <form onSubmit={onSubmit} className="card-surface p-6 md:p-8 space-y-10">
+          <Section title="Your details">
+            <Field
+              label="Full name"
+              name="fullName"
+              placeholder="Jane Mitchell"
+              value={formData.fullName}
+              onChange={onChange}
+              required
+            />
+            <Field
+              label="Email"
+              name="email"
+              type="email"
+              placeholder="jane@example.com"
+              value={formData.email}
+              onChange={onChange}
+              required
+            />
+            <Field
+              label="Phone"
+              name="phone"
+              type="tel"
+              placeholder="(555) 123-4567"
+              value={formData.phone}
+              onChange={onChange}
+              required
+            />
+          </Section>
+
+          <Section
+            title="Emergency contact"
+            hint="The person we'd contact first — usually a spouse, adult child, or executor."
           >
-            <Section
-              number="I"
-              title="Your details"
-              note="These are used only to identify you and to correspond privately with you."
+            <Field
+              label="Contact's name"
+              name="emergencyContactName"
+              placeholder="Michael Mitchell"
+              value={formData.emergencyContactName}
+              onChange={onChange}
+              required
+            />
+            <Field
+              label="Contact's phone"
+              name="emergencyContactPhone"
+              type="tel"
+              placeholder="(555) 987-6543"
+              value={formData.emergencyContactPhone}
+              onChange={onChange}
+              required
+            />
+          </Section>
+
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2">
+            <p className="text-sm text-muted-foreground">
+              You can change this later.
+            </p>
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="btn-primary w-full sm:w-auto"
             >
-              <FieldRow
-                label="Full legal name"
-                name="fullName"
-                placeholder="Jane Eliza Mitchell"
-                value={formData.fullName}
-                onChange={onChange}
-                required
-              />
-              <FieldRow
-                label="Email"
-                name="email"
-                type="email"
-                placeholder="jane@example.com"
-                value={formData.email}
-                onChange={onChange}
-                required
-              />
-              <FieldRow
-                label="Telephone"
-                name="phone"
-                type="tel"
-                placeholder="(555) 123-4567"
-                value={formData.phone}
-                onChange={onChange}
-                required
-              />
-            </Section>
-
-            <div className="rule-dotted" />
-
-            <Section
-              number="II"
-              title="Emergency contact"
-              note="The person we would contact first — usually a spouse, adult child, or executor."
-            >
-              <FieldRow
-                label="Contact's name"
-                name="emergencyContactName"
-                placeholder="Michael Mitchell"
-                value={formData.emergencyContactName}
-                onChange={onChange}
-                required
-              />
-              <FieldRow
-                label="Contact's telephone"
-                name="emergencyContactPhone"
-                type="tel"
-                placeholder="(555) 987-6543"
-                value={formData.emergencyContactPhone}
-                onChange={onChange}
-                required
-              />
-            </Section>
-
-            <div className="rule" />
-
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-              <p className="italic-serif text-ink-subtle text-sm">
-                You may amend this later from your vault.
-              </p>
-              <button type="submit" disabled={isLoading} className="btn-ink w-full sm:w-auto">
-                {isLoading ? "Sealing…" : "Seal and continue"}
-              </button>
-            </div>
-          </form>
-        </div>
+              {isLoading ? "Saving…" : "Continue"}
+            </button>
+          </div>
+        </form>
       </div>
     </Layout>
   );
 }
 
 function Section({
-  number,
   title,
-  note,
+  hint,
   children,
 }: {
-  number: string;
   title: string;
-  note: string;
+  hint?: string;
   children: React.ReactNode;
 }) {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
-      <div className="md:col-span-4">
-        <div className="flex items-baseline gap-4">
-          <span
-            className="font-serif text-seal text-4xl tnum"
-            style={{ fontVariationSettings: "'opsz' 96" }}
-          >
-            {number}.
-          </span>
-          <h2 className="font-serif text-2xl tracking-tight">{title}</h2>
-        </div>
-        <p className="mt-4 italic-serif text-ink-muted">{note}</p>
-      </div>
-      <div className="md:col-span-8 space-y-6">{children}</div>
+    <div>
+      <h2 className="text-xl font-semibold mb-1">{title}</h2>
+      {hint && <p className="text-base text-muted-foreground mb-5">{hint}</p>}
+      <div className="space-y-4 mt-4">{children}</div>
     </div>
   );
 }
 
-function FieldRow({
+function Field({
   label,
   name,
   type = "text",

@@ -6,9 +6,8 @@ import type { VaultRole } from "@/lib/types";
 
 /**
  * VaultSwitcher — dropdown in the header showing the active vault and any
- * others the user has access to (owned + member). Selecting a different
- * vault swaps state in AppContext, which re-fetches the vault per the new
- * X-Vault-Id scope.
+ * others the user has access to. Selecting a different vault swaps state in
+ * AppContext, which re-fetches the vault per the new X-Vault-Id scope.
  */
 export function VaultSwitcher() {
   const { vaults, currentVaultId, currentVaultSummary, selectVault } = useApp();
@@ -27,16 +26,13 @@ export function VaultSwitcher() {
 
   if (vaults.length === 0) return null;
 
-  // If only one vault, show it as a non-interactive label.
   if (vaults.length === 1 && currentVaultSummary) {
     return (
-      <div className="hidden md:flex items-center gap-3 px-3 py-1.5">
-        <div className="text-right">
-          <p className="text-[15px] text-ink leading-tight truncate max-w-[180px]">
-            {currentVaultSummary.name}
-          </p>
-          <RoleBadge role={currentVaultSummary.role} small />
-        </div>
+      <div className="hidden md:flex items-center gap-2 px-3">
+        <span className="text-base text-foreground truncate max-w-[180px]">
+          {currentVaultSummary.name}
+        </span>
+        <RoleBadge role={currentVaultSummary.role} small />
       </div>
     );
   }
@@ -45,28 +41,28 @@ export function VaultSwitcher() {
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((o) => !o)}
-        className="hidden md:flex items-center gap-3 pl-3 pr-2 py-1.5 hover:bg-paper-sunk/40 transition-colors rounded-sm group"
+        className="hidden md:flex items-center gap-2 px-3 py-1.5 hover:bg-muted transition-colors rounded-md"
         aria-label="Switch vault"
       >
-        <div className="text-right max-w-[200px]">
-          <p className="text-[15px] text-ink leading-tight truncate">
-            {currentVaultSummary?.name ?? "Select a vault"}
-          </p>
-          {currentVaultSummary && (
-            <RoleBadge role={currentVaultSummary.role} small />
-          )}
-        </div>
+        <span className="text-base text-foreground truncate max-w-[200px]">
+          {currentVaultSummary?.name ?? "Select a vault"}
+        </span>
+        {currentVaultSummary && (
+          <RoleBadge role={currentVaultSummary.role} small />
+        )}
         <ChevronDown
           size={14}
           strokeWidth={1.5}
-          className={`text-ink-muted transition-transform ${open ? "rotate-180" : ""}`}
+          className={`text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
         />
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-[340px] paper-card rounded-sm overflow-hidden z-50">
-          <div className="px-5 py-3 border-b border-hairline-soft">
-            <p className="eyebrow">Switch vault</p>
+        <div className="absolute right-0 top-full mt-2 w-[340px] card-surface shadow-lg overflow-hidden z-50">
+          <div className="px-5 py-3 border-b border-border">
+            <p className="text-sm font-medium text-muted-foreground">
+              Switch vault
+            </p>
           </div>
           <ul className="max-h-[420px] overflow-y-auto">
             {vaults.map((v) => {
@@ -78,19 +74,16 @@ export function VaultSwitcher() {
                       selectVault(v.id);
                       setOpen(false);
                     }}
-                    className={`w-full text-left px-5 py-4 border-b border-hairline-soft last:border-b-0 hover:bg-paper-sunk/40 transition-colors ${
-                      active ? "bg-paper-sunk/30" : ""
+                    className={`w-full text-left px-5 py-4 border-b border-border last:border-b-0 hover:bg-muted transition-colors ${
+                      active ? "bg-secondary/50" : ""
                     }`}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
-                        <p
-                          className="font-serif text-lg tracking-tight text-ink truncate"
-                          style={{ fontVariationSettings: "'opsz' 36" }}
-                        >
+                        <p className="text-lg font-medium text-foreground truncate">
                           {v.name}
                         </p>
-                        <p className="italic-serif text-sm text-ink-subtle truncate mt-0.5">
+                        <p className="text-sm text-muted-foreground truncate mt-0.5">
                           {v.role === "owner"
                             ? "Yours"
                             : `Owner · ${v.ownerName}`}
@@ -99,12 +92,12 @@ export function VaultSwitcher() {
                       <div className="flex items-center gap-2 shrink-0">
                         <RoleBadge role={v.role} />
                         {active && (
-                          <Check size={14} strokeWidth={1.5} className="text-seal" />
+                          <Check size={14} strokeWidth={1.5} className="text-primary" />
                         )}
                       </div>
                     </div>
                     {v.role === "successor" && !v.releasedAt && (
-                      <p className="italic-serif text-xs text-ink-subtle mt-2">
+                      <p className="text-sm text-muted-foreground mt-2">
                         Sealed — awaiting release
                       </p>
                     )}
@@ -127,15 +120,15 @@ export function RoleBadge({
   small?: boolean;
 }) {
   const styles: Record<VaultRole, string> = {
-    owner: "bg-ink text-paper",
-    steward: "bg-seal-soft text-seal border border-seal/20",
-    successor: "bg-paper-sunk text-ink-muted border border-hairline",
+    owner: "bg-primary text-primary-foreground",
+    steward: "bg-secondary text-foreground",
+    successor: "bg-muted text-muted-foreground",
   };
   return (
     <span
       className={`inline-flex items-center px-2 ${
-        small ? "text-[10px] py-0" : "text-[10px] py-0.5"
-      } font-medium tracking-[0.15em] uppercase rounded-sm ${styles[role]}`}
+        small ? "py-0 text-[11px]" : "py-0.5 text-xs"
+      } font-medium rounded ${styles[role]}`}
     >
       {roleLabel[role]}
     </span>

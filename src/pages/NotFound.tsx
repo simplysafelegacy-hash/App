@@ -1,6 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
 import { Layout } from "@/components/layout/Layout";
-import { SealMark } from "@/components/SealMark";
 import { useEffect } from "react";
 
 export default function NotFound() {
@@ -11,21 +10,19 @@ export default function NotFound() {
 
   return (
     <Layout showFooter={false}>
-      <div className="container py-24 md:py-40 text-center">
-        <SealMark withWord={false} size={56} className="mx-auto mb-10 fade-in" />
-        <p className="eyebrow mb-5">Not on file</p>
-        <h1 className="display-serif text-6xl md:text-8xl leading-[0.95] text-balance fade-in-up delay-100">
-          This page is <br />
-          <span className="italic-serif text-seal">nowhere to be found.</span>
+      <div className="container py-24 md:py-32 text-center max-w-xl mx-auto">
+        <p className="text-sm font-medium text-muted-foreground mb-3">404</p>
+        <h1 className="text-4xl md:text-5xl font-bold text-foreground mb-4">
+          Page not found
         </h1>
-        <p className="mt-8 text-lg italic-serif text-ink-muted max-w-md mx-auto fade-in-up delay-200">
-          The address you've followed doesn't match any entry in our records.
+        <p className="text-lg text-muted-foreground mb-10">
+          The address you've followed doesn't match anything in our records.
         </p>
-        <div className="mt-10 flex flex-col sm:flex-row gap-3 justify-center fade-in-up delay-300">
-          <Link to="/" className="btn-ink">
-            Back to the beginning
+        <div className="flex flex-col sm:flex-row gap-3 justify-center">
+          <Link to="/" className="btn-primary">
+            Go home
           </Link>
-          <Link to="/dashboard" className="btn-ghost">
+          <Link to="/dashboard" className="btn-secondary">
             Back to your vault
           </Link>
         </div>

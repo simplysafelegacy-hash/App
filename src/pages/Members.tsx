@@ -6,10 +6,6 @@ import type { VaultMember, VaultRole } from "@/lib/types";
 import { roleDescription, roleLabel } from "@/lib/permissions";
 import { ArrowLeft, Plus, Trash2 } from "lucide-react";
 
-/**
- * Members — owner-only page for managing the people named on a vault. Two
- * sections: stewards (current access) and successors (gated by release).
- */
 export default function Members() {
   const {
     vault,
@@ -52,56 +48,44 @@ export default function Members() {
 
   return (
     <Layout>
-      <div className="container py-10 md:py-14 max-w-5xl">
+      <div className="container py-8 md:py-12 max-w-4xl">
         <button
           onClick={() => navigate("/dashboard")}
-          className="inline-flex items-center gap-2 text-[15px] text-ink-muted hover:text-ink transition-colors mb-10"
+          className="inline-flex items-center gap-2 text-base text-muted-foreground hover:text-foreground transition-colors mb-6"
         >
-          <ArrowLeft size={16} strokeWidth={1.5} />
-          Back to the vault
+          <ArrowLeft size={16} strokeWidth={1.75} />
+          Back to vault
         </button>
 
-        <header className="mb-12 fade-in-up">
-          <p className="eyebrow mb-5">The people named</p>
-          <h1 className="display-serif text-5xl md:text-6xl leading-[0.98] text-balance">
-            Stewards and <br />
-            <span className="italic-serif text-seal">successors.</span>
-          </h1>
-          <p className="mt-5 text-lg text-ink-muted max-w-2xl">
-            Stewards are trusted now — they may read the vault and download
-            copies. Successors are trusted later — they remain sealed out
-            until you release the vault.
+        <header className="mb-8">
+          <h1 className="text-3xl md:text-4xl font-bold mb-2">People</h1>
+          <p className="text-lg text-muted-foreground max-w-2xl">
+            Stewards can read and download documents now. Successors are sealed
+            out until you release the vault.
           </p>
         </header>
 
-        {/* Add new */}
-        <section
-          className="paper-card p-8 md:p-10 mb-14 fade-in-up delay-100"
-          style={{ borderRadius: "2px" }}
-        >
-          <h2 className="font-serif text-2xl tracking-tight mb-1">
-            Name a new {roleLabel[draftRole].toLowerCase()}
+        <section className="card-surface p-6 md:p-8 mb-10">
+          <h2 className="text-xl font-semibold mb-1">
+            Add a {roleLabel[draftRole].toLowerCase()}
           </h2>
-          <p className="italic-serif text-ink-muted mb-8">
+          <p className="text-muted-foreground mb-6">
             {roleDescription[draftRole]}
           </p>
 
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-end">
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
             <div className="md:col-span-3">
               <label className="field-label">Role</label>
-              <div
-                className="grid grid-cols-2 border border-hairline"
-                style={{ borderRadius: "2px" }}
-              >
+              <div className="grid grid-cols-2 border border-border rounded-md overflow-hidden">
                 {(["steward", "successor"] as VaultRole[]).map((r) => (
                   <button
                     key={r}
                     type="button"
                     onClick={() => setDraftRole(r)}
-                    className={`py-3 text-[14px] tracking-[0.08em] uppercase transition-colors ${
+                    className={`py-3 text-sm font-medium transition-colors ${
                       draftRole === r
-                        ? "bg-ink text-paper"
-                        : "text-ink-muted hover:bg-paper-sunk/40"
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:bg-muted"
                     }`}
                   >
                     {roleLabel[r]}
@@ -110,7 +94,7 @@ export default function Members() {
               </div>
             </div>
             <div className="md:col-span-3">
-              <label className="field-label">Full name</label>
+              <label className="field-label">Name</label>
               <input
                 type="text"
                 placeholder="Michael Mitchell"
@@ -120,7 +104,7 @@ export default function Members() {
               />
             </div>
             <div className="md:col-span-4">
-              <label className="field-label">Email address</label>
+              <label className="field-label">Email</label>
               <input
                 type="email"
                 placeholder="michael@example.com"
@@ -132,11 +116,11 @@ export default function Members() {
             <div className="md:col-span-2">
               <button
                 onClick={onAdd}
-                className="btn-ink w-full !min-h-[48px]"
+                className="btn-primary w-full"
                 disabled={!draftName.trim() || !draftEmail.trim()}
               >
-                <Plus size={16} strokeWidth={1.5} />
-                Name
+                <Plus size={16} strokeWidth={1.75} />
+                Add
               </button>
             </div>
           </div>
@@ -144,18 +128,16 @@ export default function Members() {
 
         <Section
           title="Stewards"
-          eyebrow="Trusted now"
           description="Active access — may read and download granted documents."
           members={stewards}
           totalDocs={vault.documents.length}
           onRemove={(id) => setConfirmRemove(id)}
         />
 
-        <div className="rule my-14" />
+        <div className="h-10" />
 
         <Section
           title="Successors"
-          eyebrow="Trusted later"
           description={
             vault.releasedAt
               ? "The vault has been released — successors now have access."
@@ -169,26 +151,24 @@ export default function Members() {
 
       {confirmRemove && memberToRemove && (
         <div
-          className="fixed inset-0 z-50 bg-ink/30 flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-foreground/30 flex items-center justify-center p-4"
           onClick={() => setConfirmRemove(null)}
         >
           <div
-            className="paper-card max-w-md w-full p-8"
-            style={{ borderRadius: "2px" }}
+            className="card-surface max-w-md w-full p-6 bg-card"
             onClick={(e) => e.stopPropagation()}
           >
-            <p className="eyebrow mb-4">A final question</p>
-            <h3 className="font-serif text-3xl mb-4 tracking-tight">
+            <h3 className="text-2xl font-bold mb-3">
               Remove {memberToRemove.name}?
             </h3>
-            <p className="italic-serif text-ink-muted mb-8">
-              They will no longer appear on this vault. You can name them
-              again at any time.
+            <p className="text-muted-foreground mb-6">
+              They will no longer appear on this vault. You can add them again
+              at any time.
             </p>
             <div className="flex gap-3 justify-end">
               <button
                 onClick={() => setConfirmRemove(null)}
-                className="btn-ghost"
+                className="btn-secondary"
               >
                 Keep them
               </button>
@@ -197,7 +177,7 @@ export default function Members() {
                   await removeMember(confirmRemove);
                   setConfirmRemove(null);
                 }}
-                className="btn-seal"
+                className="btn-destructive"
               >
                 Remove
               </button>
@@ -211,91 +191,70 @@ export default function Members() {
 
 function Section({
   title,
-  eyebrow,
   description,
   members,
   totalDocs,
   onRemove,
 }: {
   title: string;
-  eyebrow: string;
   description: string;
   members: VaultMember[];
   totalDocs: number;
   onRemove: (id: string) => void;
 }) {
   return (
-    <section className="fade-in-up delay-200">
-      <div className="flex items-baseline justify-between mb-1">
-        <div>
-          <p className="eyebrow mb-1">{eyebrow}</p>
-          <h2 className="font-serif text-3xl tracking-tight">{title}</h2>
-        </div>
-        <p className="italic-serif text-ink-subtle">
+    <section>
+      <div className="flex items-baseline justify-between mb-2">
+        <h2 className="text-2xl font-semibold">{title}</h2>
+        <p className="text-sm text-muted-foreground">
           {members.length} {members.length === 1 ? "person" : "people"}
         </p>
       </div>
-      <p className="italic-serif text-ink-muted mb-6">{description}</p>
+      <p className="text-muted-foreground mb-4">{description}</p>
 
       {members.length === 0 ? (
-        <div
-          className="paper-card p-10 text-center"
-          style={{ borderRadius: "2px" }}
-        >
-          <p className="italic-serif text-ink-muted">None named yet.</p>
+        <div className="card-surface p-8 text-center">
+          <p className="text-muted-foreground">None named yet.</p>
         </div>
       ) : (
-        <ul className="divide-y divide-hairline border-y border-hairline">
-          {members.map((m, idx) => (
+        <ul className="card-surface divide-y divide-border">
+          {members.map((m) => (
             <li
               key={m.id}
-              className="grid grid-cols-12 items-center gap-4 py-6 px-1 -mx-1"
+              className="flex items-center gap-4 px-5 py-4"
             >
-              <span className="col-span-1 eyebrow text-ink-subtle tnum hidden sm:block">
-                {String(idx + 1).padStart(2, "0")}
+              <span className="w-10 h-10 rounded-full bg-secondary text-foreground inline-flex items-center justify-center text-base font-semibold shrink-0">
+                {m.name.charAt(0).toUpperCase()}
               </span>
-              <div className="col-span-12 sm:col-span-1">
-                <span
-                  className="seal-mark"
-                  style={{ width: 40, height: 40, fontSize: 18 }}
-                >
-                  {m.name.charAt(0)}
-                </span>
-              </div>
-              <div className="col-span-7 sm:col-span-6">
-                <p
-                  className="font-serif text-xl tracking-tight"
-                  style={{ fontVariationSettings: "'opsz' 36" }}
-                >
+              <div className="flex-1 min-w-0">
+                <p className="text-lg font-medium text-foreground truncate">
                   {m.name}
                 </p>
-                <p className="text-sm text-ink-subtle">{m.email}</p>
+                <p className="text-sm text-muted-foreground truncate">
+                  {m.email}
+                </p>
                 {!m.userId && (
-                  <p className="italic-serif text-xs text-ink-subtle mt-1">
+                  <p className="text-xs text-muted-foreground mt-0.5">
                     Pending — will activate on signup
                   </p>
                 )}
               </div>
-              <div className="col-span-3 sm:col-span-3 text-right">
-                <p className="text-[15px] text-ink tnum">
-                  {m.documentIds.length}{" "}
-                  <span className="italic-serif text-ink-muted">
-                    of {totalDocs}
-                  </span>
+              <div className="hidden sm:block text-right shrink-0">
+                <p className="text-base text-foreground tnum">
+                  {m.documentIds.length}
+                  <span className="text-muted-foreground"> of {totalDocs}</span>
                 </p>
-                <p className="text-xs text-ink-subtle mt-0.5">
-                  papers granted
+                <p className="text-xs text-muted-foreground">
+                  documents
                 </p>
               </div>
-              <div className="col-span-2 sm:col-span-1 text-right">
-                <button
-                  onClick={() => onRemove(m.id)}
-                  className="p-2 text-ink-muted hover:text-seal transition-colors"
-                  aria-label={`Remove ${m.name}`}
-                >
-                  <Trash2 size={16} strokeWidth={1.5} />
-                </button>
-              </div>
+              <button
+                onClick={() => onRemove(m.id)}
+                className="p-2 text-muted-foreground hover:text-destructive transition-colors rounded-md shrink-0"
+                aria-label={`Remove ${m.name}`}
+              >
+                <Trash2 size={18} strokeWidth={1.5} />
+              </button>
             </li>
           ))}
         </ul>

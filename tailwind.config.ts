@@ -13,28 +13,11 @@ export default {
       center: true,
       padding: "1.5rem",
       screens: {
-        "2xl": "1320px",
+        "2xl": "1280px",
       },
     },
     extend: {
       colors: {
-        // Primary palette — the paper & ink
-        paper: "hsl(var(--paper))",
-        "paper-alt": "hsl(var(--paper-alt))",
-        "paper-sunk": "hsl(var(--paper-sunk))",
-        ink: "hsl(var(--ink))",
-        "ink-muted": "hsl(var(--ink-muted))",
-        "ink-subtle": "hsl(var(--ink-subtle))",
-        hairline: "hsl(var(--hairline))",
-        "hairline-soft": "hsl(var(--hairline-soft))",
-
-        // The accent
-        seal: "hsl(var(--seal))",
-        "seal-hover": "hsl(var(--seal-hover))",
-        "seal-soft": "hsl(var(--seal-soft))",
-        gold: "hsl(var(--gold))",
-
-        // shadcn-consumed tokens (mapped)
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
@@ -42,6 +25,7 @@ export default {
         foreground: "hsl(var(--foreground))",
         primary: {
           DEFAULT: "hsl(var(--primary))",
+          soft: "hsl(var(--primary-soft))",
           foreground: "hsl(var(--primary-foreground))",
         },
         secondary: {
@@ -70,42 +54,30 @@ export default {
         },
       },
       borderRadius: {
-        xl: "0.375rem",
-        lg: "0.25rem",
-        md: "0.1875rem",
-        sm: "0.125rem",
+        lg: "var(--radius)",
+        md: "calc(var(--radius) - 2px)",
+        sm: "calc(var(--radius) - 4px)",
       },
       fontFamily: {
-        serif: [
-          "Fraunces",
-          "ui-serif",
-          "Iowan Old Style",
-          "Georgia",
-          "serif",
-        ],
         sans: [
-          "Instrument Sans",
+          "Inter",
           "ui-sans-serif",
           "system-ui",
           "-apple-system",
           "Segoe UI",
           "sans-serif",
         ],
-        italic: ["Instrument Serif", "ui-serif", "Georgia", "serif"],
       },
       fontSize: {
-        // Scaled for older-user readability
-        xs: ["12px", "1.4"],
+        xs: ["13px", "1.5"],
         sm: ["14px", "1.5"],
         base: ["17px", "1.55"],
         lg: ["19px", "1.55"],
         xl: ["22px", "1.4"],
         "2xl": ["28px", "1.25"],
-        "3xl": ["36px", "1.15"],
-        "4xl": ["48px", "1.05"],
-        "5xl": ["64px", "0.98"],
-        "6xl": ["80px", "0.95"],
-        "7xl": ["104px", "0.92"],
+        "3xl": ["34px", "1.2"],
+        "4xl": ["42px", "1.15"],
+        "5xl": ["52px", "1.05"],
       },
       keyframes: {
         "accordion-down": {

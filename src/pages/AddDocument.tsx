@@ -33,7 +33,6 @@ export default function AddDocument() {
     description: "",
   });
 
-  // Owner-only page.
   useEffect(() => {
     if (loading) return;
     if (!isAuthenticated) navigate("/login");
@@ -53,7 +52,6 @@ export default function AddDocument() {
     if (file) setFileName(file.name);
   };
 
-  // Existing members (stewards + successors) who can be granted access.
   const eligibleMembers = vault.members.filter((m) => m.role !== "owner");
   const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
 
@@ -87,7 +85,6 @@ export default function AddDocument() {
     e.preventDefault();
     setIsLoading(true);
 
-    // Create any newly-typed members first, collecting IDs as we go.
     const memberIds: string[] = [...selectedMemberIds];
     for (const draft of draftMembers) {
       const created = await addMember(draft);
@@ -109,43 +106,37 @@ export default function AddDocument() {
 
   return (
     <Layout showFooter={false}>
-      <div className="container py-10 md:py-14 max-w-3xl">
+      <div className="container py-8 md:py-12 max-w-2xl">
         <button
           onClick={() => navigate("/dashboard")}
-          className="inline-flex items-center gap-2 text-[15px] text-ink-muted hover:text-ink transition-colors mb-10"
+          className="inline-flex items-center gap-2 text-base text-muted-foreground hover:text-foreground transition-colors mb-6"
         >
-          <ArrowLeft size={16} strokeWidth={1.5} />
-          Back to the vault
+          <ArrowLeft size={16} strokeWidth={1.75} />
+          Back to vault
         </button>
 
-        <header className="mb-12 fade-in-up">
-          <p className="eyebrow mb-5">A new entry</p>
-          <h1 className="display-serif text-5xl md:text-6xl leading-[0.98] text-balance">
-            Record a paper <br />
-            <span className="italic-serif text-seal">for the record.</span>
+        <header className="mb-8">
+          <h1 className="text-3xl md:text-4xl font-bold mb-2">
+            Add a document
           </h1>
-          <p className="mt-5 text-lg text-ink-muted max-w-xl">
-            Tell us what it is, where you keep the original, and whom we may
-            tell about it.
+          <p className="text-lg text-muted-foreground">
+            Tell us what it is, where the original is kept, and who may know
+            about it.
           </p>
         </header>
 
-        <form
-          onSubmit={onSubmit}
-          className="space-y-14 paper-card p-8 md:p-12 fade-in-up delay-200"
-          style={{ borderRadius: "2px" }}
-        >
-          <Section number="I" title="The paper itself">
-            <Field label="Kind of document">
+        <form onSubmit={onSubmit} className="card-surface p-6 md:p-8 space-y-10">
+          <Section title="The document">
+            <Field label="Type">
               <NativeSelect
                 name="type"
                 value={formData.type}
                 onChange={(v) => setFormData({ ...formData, type: v as DocumentType })}
                 options={Object.entries(documentTypeLabels)}
-                placeholder="Select a kind…"
+                placeholder="Select a type…"
               />
             </Field>
-            <Field label="How you would call it">
+            <Field label="Name">
               <input
                 id="name"
                 name="name"
@@ -159,13 +150,13 @@ export default function AddDocument() {
             </Field>
           </Section>
 
-          <div className="rule-dotted" />
-
-          <Section number="II" title="A digital copy, if you have one">
+          <Section
+            title="Digital copy"
+            hint="Optional. You can record a document without uploading a file."
+          >
             <label
               htmlFor="file"
-              className="block border border-dashed border-hairline px-8 py-12 text-center cursor-pointer hover:bg-paper-alt/50 hover:border-ink transition-colors"
-              style={{ borderRadius: "2px" }}
+              className="block border-2 border-dashed border-border rounded-md px-6 py-10 text-center cursor-pointer hover:bg-muted hover:border-primary transition-colors"
             >
               <input
                 type="file"
@@ -174,31 +165,29 @@ export default function AddDocument() {
                 onChange={onFileChange}
                 className="hidden"
               />
-              <Upload size={28} strokeWidth={1.25} className="mx-auto text-ink-muted mb-4" />
+              <Upload size={24} strokeWidth={1.75} className="mx-auto text-muted-foreground mb-3" />
               {fileName ? (
                 <div>
-                  <p className="font-serif text-xl">{fileName}</p>
-                  <p className="italic-serif text-ink-subtle mt-1">
-                    Ready to seal. Click to choose another.
+                  <p className="text-lg font-medium">{fileName}</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Click to choose another
                   </p>
                 </div>
               ) : (
                 <div>
-                  <p className="text-ink text-[17px]">
-                    Click here to choose a PDF, photograph, or scan.
+                  <p className="text-base text-foreground">
+                    Click to choose a PDF, photo, or scan
                   </p>
-                  <p className="italic-serif text-ink-subtle mt-1">
-                    Optional — you may record this paper without uploading.
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Up to 25 MB
                   </p>
                 </div>
               )}
             </label>
           </Section>
 
-          <div className="rule-dotted" />
-
-          <Section number="III" title="Where the original rests">
-            <Field label="Kind of place">
+          <Section title="Where it's kept">
+            <Field label="Location type">
               <NativeSelect
                 name="locationType"
                 value={formData.locationType}
@@ -219,7 +208,7 @@ export default function AddDocument() {
                 className="field"
               />
             </Field>
-            <Field label="Exactly where (a description that will help the one searching)">
+            <Field label="Exact location (help whoever's searching)">
               <textarea
                 id="description"
                 name="description"
@@ -232,47 +221,33 @@ export default function AddDocument() {
             </Field>
           </Section>
 
-          <div className="rule-dotted" />
-
-          <Section number="IV" title="Who may know of it">
-            <p className="italic-serif text-ink-muted -mt-2 mb-6">
-              Grant access to people you've already named, or add new ones
-              below. Stewards see this document immediately; successors only
-              after you release the vault.
-            </p>
-
+          <Section
+            title="Who may see it"
+            hint="Stewards see this document immediately. Successors see it only after you release the vault."
+          >
             {eligibleMembers.length > 0 && (
               <div className="mb-6">
-                <p className="field-label">Already named</p>
-                <ul className="divide-y divide-hairline-soft border-y border-hairline-soft">
+                <p className="field-label">People already named</p>
+                <ul className="border border-border rounded-md divide-y divide-border">
                   {eligibleMembers.map((m) => (
                     <li key={m.id}>
-                      <label className="flex items-center gap-4 py-3 cursor-pointer hover:bg-paper-sunk/30 px-2 -mx-2 transition-colors">
+                      <label className="flex items-center gap-3 py-3 px-4 cursor-pointer hover:bg-muted transition-colors">
                         <input
                           type="checkbox"
                           checked={selectedMemberIds.includes(m.id)}
                           onChange={() => toggleMember(m.id)}
-                          className="w-4 h-4 accent-seal"
+                          className="w-4 h-4 accent-primary"
                         />
-                        <span
-                          className="seal-mark"
-                          style={{ width: 32, height: 32, fontSize: 14 }}
-                        >
-                          {m.name.charAt(0)}
+                        <span className="w-9 h-9 rounded-full bg-secondary inline-flex items-center justify-center text-sm font-semibold">
+                          {m.name.charAt(0).toUpperCase()}
                         </span>
                         <div className="flex-1 min-w-0">
-                          <p className="text-ink truncate">{m.name}</p>
-                          <p className="text-sm text-ink-subtle truncate">
+                          <p className="text-foreground truncate">{m.name}</p>
+                          <p className="text-sm text-muted-foreground truncate">
                             {m.email}
                           </p>
                         </div>
-                        <span
-                          className={`text-[10px] tracking-[0.15em] uppercase px-2 py-0.5 rounded-sm ${
-                            m.role === "steward"
-                              ? "bg-seal-soft text-seal border border-seal/20"
-                              : "bg-paper-sunk text-ink-muted border border-hairline"
-                          }`}
-                        >
+                        <span className="text-xs font-medium bg-muted text-muted-foreground rounded px-2 py-0.5">
                           {roleLabel[m.role]}
                         </span>
                       </label>
@@ -285,19 +260,16 @@ export default function AddDocument() {
             <p className="field-label">Add someone new</p>
             <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
               <div className="md:col-span-3">
-                <div
-                  className="grid grid-cols-2 border border-hairline"
-                  style={{ borderRadius: "2px" }}
-                >
+                <div className="grid grid-cols-2 border border-border rounded-md overflow-hidden">
                   {(["steward", "successor"] as VaultRole[]).map((r) => (
                     <button
                       key={r}
                       type="button"
                       onClick={() => setNewRole(r)}
-                      className={`py-3 text-[13px] tracking-[0.08em] uppercase transition-colors ${
+                      className={`py-3 text-sm font-medium transition-colors ${
                         newRole === r
-                          ? "bg-ink text-paper"
-                          : "text-ink-muted hover:bg-paper-sunk/40"
+                          ? "bg-primary text-primary-foreground"
+                          : "text-muted-foreground hover:bg-muted"
                       }`}
                     >
                       {roleLabel[r]}
@@ -324,9 +296,9 @@ export default function AddDocument() {
                 <button
                   type="button"
                   onClick={addDraftMember}
-                  className="btn-ghost w-full !min-h-[48px] !py-2"
+                  className="btn-secondary w-full"
                 >
-                  <Plus size={16} strokeWidth={1.5} />
+                  <Plus size={16} strokeWidth={1.75} />
                   Add
                 </button>
               </div>
@@ -337,20 +309,19 @@ export default function AddDocument() {
                 {draftMembers.map((d) => (
                   <li
                     key={d.email}
-                    className="flex items-center gap-2 pl-4 pr-2 py-2 bg-seal-soft border border-seal/20 text-ink text-sm"
-                    style={{ borderRadius: "2px" }}
+                    className="flex items-center gap-2 pl-3 pr-2 py-1.5 bg-secondary border border-border rounded-full text-sm"
                   >
-                    <span className="text-[10px] tracking-[0.15em] uppercase mr-1 text-seal">
+                    <span className="text-xs font-medium text-muted-foreground">
                       {roleLabel[d.role]}
                     </span>
-                    <span>{d.email}</span>
+                    <span className="text-foreground">{d.email}</span>
                     <button
                       type="button"
                       onClick={() => removeDraft(d.email)}
-                      className="text-ink-muted hover:text-seal transition-colors"
+                      className="text-muted-foreground hover:text-destructive transition-colors"
                       aria-label={`Remove ${d.email}`}
                     >
-                      <X size={14} strokeWidth={1.5} />
+                      <X size={14} strokeWidth={1.75} />
                     </button>
                   </li>
                 ))}
@@ -358,14 +329,16 @@ export default function AddDocument() {
             )}
           </Section>
 
-          <div className="rule" />
-
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-            <p className="italic-serif text-ink-subtle text-sm">
-              Entries are encrypted before they leave your device.
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2">
+            <p className="text-sm text-muted-foreground">
+              Files are encrypted before they leave your device.
             </p>
-            <button type="submit" disabled={isLoading} className="btn-ink w-full sm:w-auto">
-              {isLoading ? "Sealing the entry…" : "Seal this entry"}
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="btn-primary w-full sm:w-auto"
+            >
+              {isLoading ? "Saving…" : "Save document"}
             </button>
           </div>
         </form>
@@ -375,26 +348,19 @@ export default function AddDocument() {
 }
 
 function Section({
-  number,
   title,
+  hint,
   children,
 }: {
-  number: string;
   title: string;
+  hint?: string;
   children: React.ReactNode;
 }) {
   return (
     <div>
-      <div className="flex items-baseline gap-4 mb-6">
-        <span
-          className="font-serif text-seal text-3xl tnum"
-          style={{ fontVariationSettings: "'opsz' 96" }}
-        >
-          {number}.
-        </span>
-        <h2 className="font-serif text-2xl tracking-tight">{title}</h2>
-      </div>
-      <div className="space-y-6 pl-0 md:pl-10">{children}</div>
+      <h2 className="text-xl font-semibold mb-1">{title}</h2>
+      {hint && <p className="text-base text-muted-foreground mb-5">{hint}</p>}
+      <div className="space-y-4 mt-4">{children}</div>
     </div>
   );
 }
@@ -428,7 +394,7 @@ function NativeSelect({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         required
-        className="field appearance-none pr-8 cursor-pointer bg-transparent"
+        className="field appearance-none pr-10 cursor-pointer"
       >
         <option value="" disabled>
           {placeholder}
@@ -439,7 +405,7 @@ function NativeSelect({
           </option>
         ))}
       </select>
-      <span className="pointer-events-none absolute right-0 top-1/2 -translate-y-1/2 text-ink-muted text-sm">
+      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
         ▾
       </span>
     </div>

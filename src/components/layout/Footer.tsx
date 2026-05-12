@@ -3,78 +3,31 @@ import { SealMark } from "@/components/SealMark";
 
 export function Footer() {
   return (
-    <footer className="border-t border-hairline-soft mt-24">
-      <div className="container py-16">
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-10">
-          <div className="md:col-span-5">
-            <SealMark size={32} />
-            <p className="mt-5 text-ink-muted max-w-sm leading-relaxed">
-              A quiet place to record where your important papers rest, and who
-              may see them.
-            </p>
-          </div>
-          <div className="md:col-span-7 grid grid-cols-2 sm:grid-cols-3 gap-8">
-            <FooterCol
-              title="The Vault"
-              links={[
-                { to: "/dashboard", label: "Your vault" },
-                { to: "/viewers", label: "Authorized viewers" },
-                { to: "/add-document", label: "Add a document" },
-              ]}
-            />
-            <FooterCol
-              title="Service"
-              links={[
-                { to: "/plans", label: "Subscriptions" },
-                { to: "#", label: "Security" },
-                { to: "#", label: "Legal basics" },
-              ]}
-            />
-            <FooterCol
-              title="Company"
-              links={[
-                { to: "#", label: "About" },
-                { to: "#", label: "Contact" },
-                { to: "#", label: "Privacy" },
-              ]}
-            />
-          </div>
+    <footer className="border-t border-border mt-20">
+      <div className="container py-12">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+          <SealMark size={28} />
+          <nav className="flex flex-wrap items-center gap-x-8 gap-y-3 text-base">
+            <Link to="/plans" className="text-muted-foreground hover:text-foreground transition-colors">
+              Plans
+            </Link>
+            <Link to="#" className="text-muted-foreground hover:text-foreground transition-colors">
+              Security
+            </Link>
+            <Link to="#" className="text-muted-foreground hover:text-foreground transition-colors">
+              Privacy
+            </Link>
+            <Link to="#" className="text-muted-foreground hover:text-foreground transition-colors">
+              Contact
+            </Link>
+          </nav>
         </div>
-        <div className="mt-16 pt-8 border-t border-hairline-soft flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <p className="text-sm text-ink-subtle">
-            © {new Date().getFullYear()} Sealed. All rights reserved.
-          </p>
-          <p className="italic-serif text-sm text-ink-subtle">
-            Kept with care, released only as you have asked.
+        <div className="mt-8 pt-6 border-t border-border">
+          <p className="text-sm text-muted-foreground">
+            © {new Date().getFullYear()} Simply Safe Legacy. All rights reserved.
           </p>
         </div>
       </div>
     </footer>
-  );
-}
-
-function FooterCol({
-  title,
-  links,
-}: {
-  title: string;
-  links: { to: string; label: string }[];
-}) {
-  return (
-    <div>
-      <p className="eyebrow mb-4">{title}</p>
-      <ul className="space-y-3">
-        {links.map((l) => (
-          <li key={l.label}>
-            <Link
-              to={l.to}
-              className="text-ink hover:text-seal transition-colors text-[15px]"
-            >
-              {l.label}
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </div>
   );
 }

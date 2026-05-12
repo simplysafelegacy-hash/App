@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Layout } from "@/components/layout/Layout";
+import { SealMark } from "@/components/SealMark";
 import { GoogleSignInButton } from "@/components/GoogleSignInButton";
 import { useApp } from "@/context/AppContext";
 import { ApiError } from "@/lib/api";
@@ -37,93 +37,89 @@ export default function Login() {
   };
 
   return (
-    <Layout showFooter={false}>
-      <div className="container py-16 md:py-24">
-        <div className="max-w-[480px] mx-auto">
-          <div className="text-center mb-12 fade-in-up">
-            <p className="eyebrow mb-5">Return to your vault</p>
-            <h1 className="display-serif text-5xl md:text-6xl text-balance">
-              Welcome <span className="italic-serif text-seal">back.</span>
-            </h1>
+    <div className="min-h-screen flex flex-col items-center justify-center px-6 py-12 bg-background">
+      <div className="w-full max-w-md">
+        <div className="flex justify-center mb-10">
+          <Link to="/">
+            <SealMark size={40} />
+          </Link>
+        </div>
+
+        <div className="card-surface p-8 md:p-10">
+          <h1 className="text-3xl font-bold text-center text-foreground mb-2">
+            Sign in
+          </h1>
+          <p className="text-center text-muted-foreground mb-8">
+            Welcome back.
+          </p>
+
+          <GoogleSignInButton
+            label="Continue with Google"
+            onSuccess={goNext}
+            onError={(msg) => setError(msg)}
+          />
+
+          <div className="my-6 flex items-center gap-4">
+            <div className="flex-1 border-t border-border" />
+            <span className="text-sm text-muted-foreground">or</span>
+            <div className="flex-1 border-t border-border" />
           </div>
 
-          <div className="fade-in-up delay-200">
-            <GoogleSignInButton
-              label="Continue with Google"
-              onSuccess={goNext}
-              onError={(msg) => setError(msg)}
-            />
-
-            <div className="my-8 flex items-center gap-4">
-              <div className="flex-1 border-t border-hairline-soft" />
-              <span className="italic-serif text-ink-subtle text-sm">or</span>
-              <div className="flex-1 border-t border-hairline-soft" />
+          <form onSubmit={onSubmit} className="space-y-4">
+            <div>
+              <label htmlFor="email" className="field-label">
+                Email
+              </label>
+              <input
+                id="email"
+                type="email"
+                autoComplete="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                className="field"
+              />
+            </div>
+            <div>
+              <label htmlFor="password" className="field-label">
+                Password
+              </label>
+              <input
+                id="password"
+                type="password"
+                autoComplete="current-password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Your password"
+                className="field"
+              />
             </div>
 
-            <form onSubmit={onSubmit} className="space-y-5">
-              <div>
-                <label htmlFor="email" className="field-label">
-                  Email
-                </label>
-                <input
-                  id="email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  className="field"
-                />
-              </div>
-              <div>
-                <label htmlFor="password" className="field-label">
-                  Password
-                </label>
-                <input
-                  id="password"
-                  type="password"
-                  autoComplete="current-password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Your password"
-                  className="field"
-                />
-              </div>
+            <button
+              type="submit"
+              disabled={pending}
+              className="btn-primary w-full"
+            >
+              {pending ? "Signing in…" : "Sign in"}
+            </button>
+          </form>
 
-              <button
-                type="submit"
-                disabled={pending}
-                className="btn-ink w-full"
-              >
-                {pending ? "Just a moment…" : "Sign in"}
-              </button>
-            </form>
-
-            {error && (
-              <p className="italic-serif text-seal text-center text-[15px] mt-5">
-                {error}
-              </p>
-            )}
-
-            <p className="mt-8 italic-serif text-sm text-ink-subtle text-center leading-relaxed">
-              Sign in with whichever method you used when you opened your
-              vault. We never see your Google password, and your Sealed
-              password is stored only as a one-way hash.
+          {error && (
+            <p className="text-destructive text-center text-sm mt-5">
+              {error}
             </p>
-          </div>
-
-          <div className="mt-12 pt-8 border-t border-hairline-soft text-center fade-in-up delay-300">
-            <p className="text-ink-muted">
-              New here?{" "}
-              <Link to="/signup" className="link-ink">
-                Open a vault
-              </Link>
-            </p>
-          </div>
+          )}
         </div>
+
+        <p className="text-center text-muted-foreground mt-8">
+          New here?{" "}
+          <Link to="/signup" className="link">
+            Create an account
+          </Link>
+        </p>
       </div>
-    </Layout>
+    </div>
   );
 }

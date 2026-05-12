@@ -19,14 +19,13 @@ export default function DocumentDetail() {
   if (!doc) {
     return (
       <Layout>
-        <div className="container py-24 text-center">
-          <p className="eyebrow mb-5">Not on file</p>
-          <h1 className="display-serif text-5xl">We cannot find that entry.</h1>
-          <p className="mt-5 italic-serif text-ink-muted">
+        <div className="container py-20 text-center max-w-xl mx-auto">
+          <h1 className="text-3xl font-bold mb-3">Document not found</h1>
+          <p className="text-muted-foreground mb-8">
             It may have been removed, or the link is incorrect.
           </p>
-          <Link to="/dashboard" className="btn-ink mt-10">
-            Return to your vault
+          <Link to="/dashboard" className="btn-primary">
+            Back to vault
           </Link>
         </div>
       </Layout>
@@ -57,148 +56,115 @@ export default function DocumentDetail() {
 
   return (
     <Layout>
-      <div className="container py-10 md:py-14 max-w-4xl">
-        <div className="flex items-center justify-between mb-10">
+      <div className="container py-8 md:py-12 max-w-4xl">
+        <div className="flex items-center justify-between mb-6">
           <button
             onClick={() => navigate("/dashboard")}
-            className="inline-flex items-center gap-2 text-[15px] text-ink-muted hover:text-ink transition-colors"
+            className="inline-flex items-center gap-2 text-base text-muted-foreground hover:text-foreground transition-colors"
           >
-            <ArrowLeft size={16} strokeWidth={1.5} />
-            Back to the vault
+            <ArrowLeft size={16} strokeWidth={1.75} />
+            Back to vault
           </button>
 
           {permissions.canModify && (
             <div className="flex items-center gap-2">
-              <button className="btn-ghost !min-h-[40px] !py-2 !px-4 !text-[14px]">
-                <Pencil size={14} strokeWidth={1.5} />
-                Amend
+              <button className="btn-secondary !min-h-[40px] !px-3 text-sm">
+                <Pencil size={14} strokeWidth={1.75} />
+                Edit
               </button>
               <button
                 onClick={() => setConfirmOpen(true)}
-                className="btn-ghost !min-h-[40px] !py-2 !px-4 !text-[14px] !text-seal hover:!bg-seal-soft"
+                className="btn-secondary !min-h-[40px] !px-3 text-sm !text-destructive hover:!bg-destructive/10"
               >
-                <Trash2 size={14} strokeWidth={1.5} />
-                Remove
+                <Trash2 size={14} strokeWidth={1.75} />
+                Delete
               </button>
             </div>
           )}
         </div>
 
-        <header className="mb-12 fade-in-up">
-          <div className="flex items-start justify-between gap-6 mb-8">
-            <div>
-              <p className="eyebrow mb-3">
-                Entry · {documentTypeLabels[doc.type]}
-              </p>
-              <h1 className="display-serif text-5xl md:text-6xl leading-[1.0] text-balance">
-                {doc.name}
-              </h1>
-            </div>
-            <div
-              className="seal-mark shrink-0"
-              style={{
-                width: 72,
-                height: 72,
-                fontSize: 32,
-                transform: "rotate(-6deg)",
-                boxShadow:
-                  "inset 0 0 0 2px hsl(var(--paper)/.2), 0 2px 8px hsl(36 12% 9%/.12)",
-              }}
-            >
-              S
-            </div>
-          </div>
-          <div className="rule" />
+        <header className="mb-8">
+          <p className="text-sm font-medium text-muted-foreground mb-2">
+            {documentTypeLabels[doc.type]}
+          </p>
+          <h1 className="text-3xl md:text-4xl font-bold text-balance">
+            {doc.name}
+          </h1>
         </header>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-10 lg:gap-14 fade-in-up delay-200">
-          <div className="lg:col-span-2 space-y-12">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="lg:col-span-2 space-y-8">
             {doc.hasFile && (
               <Spec label="Digital copy">
-                <div
-                  className="flex items-center justify-between border border-hairline p-5"
-                  style={{ borderRadius: "2px" }}
-                >
+                <div className="card-surface p-4 flex items-center justify-between">
                   <div className="min-w-0">
-                    <p className="font-serif text-xl truncate">
+                    <p className="text-lg font-medium truncate">
                       {doc.fileName ?? "Document on file"}
                     </p>
-                    <p className="italic-serif text-sm text-ink-subtle mt-1">
-                      Encrypted at rest · Released only on request
+                    <p className="text-sm text-muted-foreground mt-0.5">
+                      Encrypted at rest
                     </p>
                   </div>
                   {permissions.canDownload ? (
                     <button
                       onClick={onDownload}
                       disabled={downloading}
-                      className="btn-ghost !min-h-[44px] !py-2 !px-4 !text-[14px] shrink-0 ml-4"
+                      className="btn-secondary !min-h-[40px] !px-3 text-sm shrink-0 ml-4"
                     >
-                      <Download size={14} strokeWidth={1.5} />
-                      {downloading ? "Retrieving…" : "Retrieve"}
+                      <Download size={14} strokeWidth={1.75} />
+                      {downloading ? "Retrieving…" : "Download"}
                     </button>
                   ) : (
-                    <span className="italic-serif text-sm text-ink-subtle shrink-0 ml-4">
+                    <span className="text-sm text-muted-foreground shrink-0 ml-4">
                       Sealed until released
                     </span>
                   )}
                 </div>
                 {downloadError && (
-                  <p className="italic-serif text-seal text-sm mt-2">
+                  <p className="text-destructive text-sm mt-2">
                     {downloadError}
                   </p>
                 )}
               </Spec>
             )}
 
-            <Spec label="Where the original rests">
-              <p
-                className="font-serif text-2xl tracking-tight mb-1"
-                style={{ fontVariationSettings: "'opsz' 48" }}
-              >
+            <Spec label="Where the original is kept">
+              <p className="text-xl font-semibold mb-1">
                 {locationTypeLabels[doc.locationType]}
               </p>
-              <p className="text-ink text-[17px]">{doc.address}</p>
+              <p className="text-foreground">{doc.address}</p>
               {doc.description && (
-                <p className="italic-serif text-ink-muted mt-3 leading-relaxed">
+                <p className="text-muted-foreground mt-2 leading-relaxed">
                   {doc.description}
                 </p>
               )}
             </Spec>
 
             {permissions.isOwner && (
-              <Spec label="Who may view this entry">
+              <Spec label="Who may view this document">
                 {visibleMembers.length === 0 ? (
-                  <p className="italic-serif text-ink-muted">
-                    No one named. This entry is private to you.
+                  <p className="text-muted-foreground">
+                    No one named. This document is private to you.
                   </p>
                 ) : (
-                  <ul className="divide-y divide-hairline-soft border-y border-hairline-soft">
+                  <ul className="card-surface divide-y divide-border">
                     {visibleMembers.map((m) => (
                       <li
                         key={m.id}
-                        className="py-4 flex items-center gap-4"
+                        className="px-4 py-3 flex items-center gap-3"
                       >
-                        <span
-                          className="seal-mark"
-                          style={{ width: 38, height: 38, fontSize: 17 }}
-                        >
-                          {m.name.charAt(0)}
+                        <span className="w-9 h-9 rounded-full bg-secondary inline-flex items-center justify-center text-sm font-semibold shrink-0">
+                          {m.name.charAt(0).toUpperCase()}
                         </span>
                         <div className="flex-1 min-w-0">
-                          <p className="font-medium text-ink truncate">
+                          <p className="font-medium text-foreground truncate">
                             {m.name}
                           </p>
-                          <p className="text-sm text-ink-subtle truncate">
+                          <p className="text-sm text-muted-foreground truncate">
                             {m.email}
                           </p>
                         </div>
-                        <span
-                          className={`text-[10px] tracking-[0.15em] uppercase px-2 py-0.5 rounded-sm shrink-0 ${
-                            m.role === "steward"
-                              ? "bg-seal-soft text-seal border border-seal/20"
-                              : "bg-paper-sunk text-ink-muted border border-hairline"
-                          }`}
-                        >
+                        <span className="text-xs font-medium bg-muted text-muted-foreground rounded px-2 py-0.5 shrink-0">
                           {roleLabel[m.role]}
                         </span>
                       </li>
@@ -209,9 +175,9 @@ export default function DocumentDetail() {
             )}
           </div>
 
-          <aside className="lg:col-span-1 lg:border-l lg:border-hairline lg:pl-10">
+          <aside className="space-y-6">
             <Spec label="Recorded">
-              <p className="font-serif text-xl tnum">
+              <p className="text-base tnum">
                 {new Date(doc.createdAt).toLocaleDateString("en-US", {
                   month: "long",
                   day: "numeric",
@@ -220,10 +186,8 @@ export default function DocumentDetail() {
               </p>
             </Spec>
 
-            <div className="rule-dotted my-8" />
-
-            <Spec label="Last amended">
-              <p className="font-serif text-xl tnum">
+            <Spec label="Last updated">
+              <p className="text-base tnum">
                 {new Date(doc.lastUpdated).toLocaleDateString("en-US", {
                   month: "long",
                   day: "numeric",
@@ -232,10 +196,8 @@ export default function DocumentDetail() {
               </p>
             </Spec>
 
-            <div className="rule-dotted my-8" />
-
             <Spec label="Reference">
-              <p className="font-mono text-sm text-ink-muted break-all">
+              <p className="font-mono text-xs text-muted-foreground break-all">
                 {doc.id}
               </p>
             </Spec>
@@ -245,31 +207,27 @@ export default function DocumentDetail() {
 
       {confirmOpen && (
         <div
-          className="fixed inset-0 z-50 bg-ink/30 flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-foreground/30 flex items-center justify-center p-4"
           onClick={() => setConfirmOpen(false)}
         >
           <div
-            className="paper-card max-w-md w-full p-8"
-            style={{ borderRadius: "2px" }}
+            className="card-surface max-w-md w-full p-6 bg-card"
             onClick={(e) => e.stopPropagation()}
           >
-            <p className="eyebrow mb-4">A final question</p>
-            <h3 className="font-serif text-3xl mb-4 tracking-tight">
-              Remove this entry?
-            </h3>
-            <p className="italic-serif text-ink-muted mb-8">
-              Once removed, the record of this paper will be gone from your
-              vault. The physical document remains wherever you've kept it.
+            <h3 className="text-2xl font-bold mb-3">Delete this document?</h3>
+            <p className="text-muted-foreground mb-6">
+              The record of this document will be removed from your vault. The
+              physical document remains wherever you've kept it.
             </p>
             <div className="flex gap-3 justify-end">
               <button
                 onClick={() => setConfirmOpen(false)}
-                className="btn-ghost"
+                className="btn-secondary"
               >
                 Keep it
               </button>
-              <button onClick={onDelete} className="btn-seal">
-                Remove
+              <button onClick={onDelete} className="btn-destructive">
+                Delete
               </button>
             </div>
           </div>
@@ -288,7 +246,7 @@ function Spec({
 }) {
   return (
     <div>
-      <p className="eyebrow mb-3">{label}</p>
+      <p className="text-sm font-medium text-muted-foreground mb-2">{label}</p>
       {children}
     </div>
   );

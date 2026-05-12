@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Layout } from "@/components/layout/Layout";
+import { SealMark } from "@/components/SealMark";
 import { GoogleSignInButton } from "@/components/GoogleSignInButton";
 import { useApp } from "@/context/AppContext";
 import { ApiError } from "@/lib/api";
@@ -44,155 +44,114 @@ export default function Signup() {
   };
 
   return (
-    <Layout showFooter={false}>
-      <div className="container py-16 md:py-24">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-16 max-w-6xl mx-auto">
-          <div className="lg:col-span-5 fade-in-up">
-            <p className="eyebrow mb-5">A new account</p>
-            <h1 className="display-serif text-5xl md:text-6xl leading-[0.98] text-balance">
-              Begin a <br />
-              <span className="italic-serif text-seal">quiet ledger.</span>
-            </h1>
-            <p className="mt-6 text-lg text-ink-muted max-w-sm leading-relaxed">
-              You may continue with your Google account, or set a password
-              of your own. Either way, only you hold the key.
-            </p>
-            <div className="rule my-10" />
-            <dl className="space-y-6">
-              {[
-                ["I.", "Open your account in whichever way you prefer."],
-                ["II.", "Tell us who to notify if you're unwell."],
-                ["III.", "Begin adding the papers that matter."],
-              ].map(([n, t]) => (
-                <div key={n} className="flex items-baseline gap-5">
-                  <dt
-                    className="font-serif text-2xl text-seal tnum shrink-0"
-                    style={{ fontVariationSettings: "'opsz' 96" }}
-                  >
-                    {n}
-                  </dt>
-                  <dd className="text-ink text-lg">{t}</dd>
-                </div>
-              ))}
-            </dl>
+    <div className="min-h-screen flex flex-col items-center justify-center px-6 py-12 bg-background">
+      <div className="w-full max-w-md">
+        <div className="flex justify-center mb-10">
+          <Link to="/">
+            <SealMark size={40} />
+          </Link>
+        </div>
+
+        <div className="card-surface p-8 md:p-10">
+          <h1 className="text-3xl font-bold text-center text-foreground mb-2">
+            Create your account
+          </h1>
+          <p className="text-center text-muted-foreground mb-8">
+            One vault, kept in your name.
+          </p>
+
+          <GoogleSignInButton
+            label="Continue with Google"
+            onSuccess={goNext}
+            onError={(msg) => setError(msg)}
+          />
+
+          <div className="my-6 flex items-center gap-4">
+            <div className="flex-1 border-t border-border" />
+            <span className="text-sm text-muted-foreground">or</span>
+            <div className="flex-1 border-t border-border" />
           </div>
 
-          <div className="lg:col-span-7 fade-in-up delay-200">
-            <div
-              className="paper-card p-10 md:p-14"
-              style={{ borderRadius: "2px" }}
-            >
-              <h2 className="font-serif text-3xl tracking-tight mb-3">
-                Open your vault
-              </h2>
-              <p className="italic-serif text-ink-muted mb-10">
-                One click with Google, or a password of your choosing.
-              </p>
-
-              <GoogleSignInButton
-                label="Continue with Google"
-                onSuccess={goNext}
-                onError={(msg) => setError(msg)}
+          <form onSubmit={onSubmit} className="space-y-4">
+            <div>
+              <label htmlFor="name" className="field-label">
+                Full name
+              </label>
+              <input
+                id="name"
+                type="text"
+                autoComplete="name"
+                required
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Jane Mitchell"
+                className="field"
               />
-
-              <div className="my-8 flex items-center gap-4">
-                <div className="flex-1 border-t border-hairline-soft" />
-                <span className="italic-serif text-ink-subtle text-sm">
-                  or set a password
-                </span>
-                <div className="flex-1 border-t border-hairline-soft" />
-              </div>
-
-              <form onSubmit={onSubmit} className="space-y-5">
-                <div>
-                  <label htmlFor="name" className="field-label">
-                    Full name
-                  </label>
-                  <input
-                    id="name"
-                    type="text"
-                    autoComplete="name"
-                    required
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Jane Eliza Mitchell"
-                    className="field"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="email" className="field-label">
-                    Email
-                  </label>
-                  <input
-                    id="email"
-                    type="email"
-                    autoComplete="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="jane@example.com"
-                    className="field"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="password" className="field-label">
-                    Password
-                  </label>
-                  <input
-                    id="password"
-                    type="password"
-                    autoComplete="new-password"
-                    required
-                    minLength={MIN_PASSWORD_LEN}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="At least 12 characters"
-                    className="field"
-                  />
-                  <p className="italic-serif text-ink-subtle text-sm mt-2">
-                    A long passphrase is easier to remember and harder to
-                    guess. We will help you add a second factor later.
-                  </p>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={pending}
-                  className="btn-ink w-full"
-                >
-                  {pending ? "Just a moment…" : "Open the vault"}
-                </button>
-              </form>
-
-              {error && (
-                <p className="italic-serif text-seal text-[15px] mt-5">
-                  {error}
-                </p>
-              )}
-
-              <p className="mt-10 text-sm text-ink-subtle leading-relaxed">
-                By continuing you agree to our{" "}
-                <a href="#" className="link-ink">
-                  Terms
-                </a>{" "}
-                and{" "}
-                <a href="#" className="link-ink">
-                  Privacy Policy
-                </a>
-                . We store passwords only as a one-way hash and never sell
-                or share your information.
+            </div>
+            <div>
+              <label htmlFor="email" className="field-label">
+                Email
+              </label>
+              <input
+                id="email"
+                type="email"
+                autoComplete="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="jane@example.com"
+                className="field"
+              />
+            </div>
+            <div>
+              <label htmlFor="password" className="field-label">
+                Password
+              </label>
+              <input
+                id="password"
+                type="password"
+                autoComplete="new-password"
+                required
+                minLength={MIN_PASSWORD_LEN}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="At least 12 characters"
+                className="field"
+              />
+              <p className="field-hint">
+                A long passphrase is easier to remember and harder to guess.
               </p>
             </div>
 
-            <p className="mt-6 text-center text-ink-muted">
-              Already have a vault?{" "}
-              <Link to="/login" className="link-ink">
-                Sign in
-              </Link>
+            <button
+              type="submit"
+              disabled={pending}
+              className="btn-primary w-full"
+            >
+              {pending ? "Creating account…" : "Create account"}
+            </button>
+          </form>
+
+          {error && (
+            <p className="text-destructive text-center text-sm mt-5">
+              {error}
             </p>
-          </div>
+          )}
+
+          <p className="text-sm text-muted-foreground text-center mt-8">
+            By continuing you agree to our{" "}
+            <a href="#" className="link">Terms</a> and{" "}
+            <a href="#" className="link">Privacy Policy</a>.
+          </p>
         </div>
+
+        <p className="text-center text-muted-foreground mt-8">
+          Already have an account?{" "}
+          <Link to="/login" className="link">
+            Sign in
+          </Link>
+        </p>
       </div>
-    </Layout>
+    </div>
   );
 }

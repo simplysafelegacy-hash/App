@@ -44,33 +44,28 @@ export function Header() {
   }, []);
 
   return (
-    <header className="sticky top-0 z-40 bg-paper/90 backdrop-blur-md border-b border-hairline-soft">
-      <div className="container flex items-center justify-between h-[72px]">
+    <header className="sticky top-0 z-40 bg-background/90 backdrop-blur-md border-b border-border">
+      <div className="container flex items-center justify-between h-16">
         <Link to={isAuthenticated ? "/dashboard" : "/"} className="shrink-0">
-          <SealMark size={34} />
+          <SealMark size={32} />
         </Link>
 
         {isAuthenticated ? (
           <>
-            <nav className="hidden md:flex items-center gap-8 lg:gap-10">
+            <nav className="hidden md:flex items-center gap-8">
               {authedLinks.map((l) => (
                 <NavLink
                   key={l.to}
                   to={l.to}
                   className={({ isActive }) =>
-                    `text-[15px] tracking-wide transition-colors relative py-2 ${
-                      isActive ? "text-ink" : "text-ink-muted hover:text-ink"
+                    `text-base transition-colors py-2 ${
+                      isActive
+                        ? "text-foreground font-medium"
+                        : "text-muted-foreground hover:text-foreground"
                     }`
                   }
                 >
-                  {({ isActive }) => (
-                    <>
-                      {l.label}
-                      {isActive && (
-                        <span className="absolute -bottom-[1px] left-0 right-0 h-[2px] bg-seal" />
-                      )}
-                    </>
-                  )}
+                  {l.label}
                 </NavLink>
               ))}
             </nav>
@@ -80,36 +75,36 @@ export function Header() {
               <div className="relative" ref={notifRef}>
                 <button
                   onClick={() => setNotifOpen((o) => !o)}
-                  className="relative p-2.5 text-ink-muted hover:text-ink transition-colors"
+                  className="relative p-2.5 text-muted-foreground hover:text-foreground transition-colors rounded-md"
                   aria-label="Notifications"
                 >
                   <Bell size={20} strokeWidth={1.5} />
                   {unread > 0 && (
-                    <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-seal" />
+                    <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-accent" />
                   )}
                 </button>
                 {notifOpen && (
-                  <div className="absolute right-0 top-full mt-2 w-[380px] paper-card rounded-sm overflow-hidden">
-                    <div className="px-5 py-4 border-b border-hairline-soft flex items-baseline justify-between">
-                      <h3 className="font-serif text-lg">Activity</h3>
-                      <span className="text-xs text-ink-subtle">{unread} unread</span>
+                  <div className="absolute right-0 top-full mt-2 w-[380px] card-surface shadow-lg overflow-hidden">
+                    <div className="px-5 py-4 border-b border-border flex items-baseline justify-between">
+                      <h3 className="text-lg font-semibold">Activity</h3>
+                      <span className="text-sm text-muted-foreground">{unread} unread</span>
                     </div>
                     <div className="max-h-[360px] overflow-y-auto">
                       {notifications.length === 0 ? (
-                        <div className="px-5 py-10 text-center text-ink-subtle italic-serif">
-                          Nothing new to mention.
+                        <div className="px-5 py-10 text-center text-muted-foreground">
+                          Nothing new.
                         </div>
                       ) : (
                         notifications.slice(0, 8).map((n) => (
                           <button
                             key={n.id}
                             onClick={() => markNotificationRead(n.id)}
-                            className={`w-full text-left px-5 py-4 border-b border-hairline-soft last:border-b-0 hover:bg-paper-sunk/40 transition-colors ${
-                              !n.read ? "bg-seal-soft/30" : ""
+                            className={`w-full text-left px-5 py-4 border-b border-border last:border-b-0 hover:bg-muted transition-colors ${
+                              !n.read ? "bg-secondary/50" : ""
                             }`}
                           >
-                            <p className="text-[15px] text-ink leading-snug">{n.message}</p>
-                            <p className="text-xs text-ink-subtle mt-1.5">
+                            <p className="text-base text-foreground leading-snug">{n.message}</p>
+                            <p className="text-xs text-muted-foreground mt-1.5">
                               {new Date(n.timestamp).toLocaleDateString("en-US", {
                                 month: "long",
                                 day: "numeric",
@@ -127,41 +122,38 @@ export function Header() {
               <div className="relative hidden md:block" ref={menuRef}>
                 <button
                   onClick={() => setMenuOpen((o) => !o)}
-                  className="flex items-center gap-2 pl-2 pr-3 py-1.5 text-ink hover:bg-paper-sunk/40 transition-colors rounded-sm"
+                  className="flex items-center gap-2 pl-2 pr-3 py-1.5 text-foreground hover:bg-muted transition-colors rounded-md"
                 >
                   {currentUser?.avatarUrl ? (
                     <img
                       src={currentUser.avatarUrl}
                       alt=""
-                      className="w-8 h-8 rounded-full border border-hairline-soft object-cover"
+                      className="w-8 h-8 rounded-full border border-border object-cover"
                       referrerPolicy="no-referrer"
                     />
                   ) : (
-                    <span
-                      className="seal-mark"
-                      style={{ width: 32, height: 32, fontSize: 15 }}
-                    >
-                      {(currentUser?.name || "?").charAt(0)}
+                    <span className="w-8 h-8 rounded-full bg-primary text-primary-foreground inline-flex items-center justify-center text-sm font-semibold">
+                      {(currentUser?.name || "?").charAt(0).toUpperCase()}
                     </span>
                   )}
-                  <span className="text-[15px]">
+                  <span className="text-base">
                     {currentUser?.name?.split(" ")[0]}
                   </span>
                   <ChevronDown size={14} strokeWidth={1.5} />
                 </button>
                 {menuOpen && (
-                  <div className="absolute right-0 top-full mt-2 w-[260px] paper-card rounded-sm overflow-hidden">
-                    <div className="px-5 py-4 border-b border-hairline-soft">
-                      <p className="text-[15px] font-medium text-ink truncate">
+                  <div className="absolute right-0 top-full mt-2 w-[260px] card-surface shadow-lg overflow-hidden">
+                    <div className="px-5 py-4 border-b border-border">
+                      <p className="text-base font-medium text-foreground truncate">
                         {currentUser?.name}
                       </p>
-                      <p className="text-xs text-ink-subtle truncate mt-0.5">
+                      <p className="text-sm text-muted-foreground truncate mt-0.5">
                         {currentUser?.email}
                       </p>
                     </div>
                     <button
                       onClick={() => navigate("/dashboard")}
-                      className="w-full flex items-center gap-3 px-5 py-3 text-[15px] text-ink hover:bg-paper-sunk/40 transition-colors text-left"
+                      className="w-full flex items-center gap-3 px-5 py-3 text-base text-foreground hover:bg-muted transition-colors text-left"
                     >
                       <UserIcon size={16} strokeWidth={1.5} />
                       Vault
@@ -171,7 +163,7 @@ export function Header() {
                         logout();
                         navigate("/");
                       }}
-                      className="w-full flex items-center gap-3 px-5 py-3 text-[15px] text-ink hover:bg-paper-sunk/40 transition-colors text-left border-t border-hairline-soft"
+                      className="w-full flex items-center gap-3 px-5 py-3 text-base text-foreground hover:bg-muted transition-colors text-left border-t border-border"
                     >
                       <LogOut size={16} strokeWidth={1.5} />
                       Sign out
@@ -182,7 +174,7 @@ export function Header() {
 
               <button
                 onClick={() => setMobileOpen((o) => !o)}
-                className="md:hidden p-2.5 text-ink"
+                className="md:hidden p-2.5 text-foreground"
                 aria-label="Menu"
               >
                 {mobileOpen ? <X size={22} /> : <Menu size={22} />}
@@ -191,17 +183,20 @@ export function Header() {
           </>
         ) : (
           <>
-            <div className="hidden sm:flex items-center gap-8">
-              <Link to="/login" className="text-[15px] text-ink-muted hover:text-ink transition-colors">
+            <div className="hidden sm:flex items-center gap-3">
+              <Link
+                to="/login"
+                className="text-base text-muted-foreground hover:text-foreground transition-colors px-3 py-2"
+              >
                 Sign in
               </Link>
-              <Link to="/signup" className="btn-ink !min-h-[44px] !py-2.5 !px-5 text-[14px]">
-                Open a vault
+              <Link to="/signup" className="btn-primary !min-h-[40px] !text-sm">
+                Create account
               </Link>
             </div>
             <button
               onClick={() => setMobileOpen((o) => !o)}
-              className="sm:hidden p-2 text-ink"
+              className="sm:hidden p-2 text-foreground"
               aria-label="Menu"
             >
               {mobileOpen ? <X size={22} /> : <Menu size={22} />}
@@ -211,8 +206,8 @@ export function Header() {
       </div>
 
       {mobileOpen && (
-        <div className="md:hidden border-t border-hairline-soft bg-paper">
-          <nav className="container py-6 flex flex-col gap-5">
+        <div className="md:hidden border-t border-border bg-background">
+          <nav className="container py-6 flex flex-col gap-4">
             {isAuthenticated ? (
               <>
                 <MobileVaultPicker />
@@ -220,19 +215,19 @@ export function Header() {
                   <Link
                     key={l.to}
                     to={l.to}
-                    className="text-lg text-ink"
+                    className="text-lg text-foreground py-1"
                   >
                     {l.label}
                   </Link>
                 ))}
-                <div className="rule" />
-                <p className="text-sm text-ink-subtle">{currentUser?.email}</p>
+                <div className="border-t border-border my-2" />
+                <p className="text-sm text-muted-foreground">{currentUser?.email}</p>
                 <button
                   onClick={() => {
                     logout();
                     navigate("/");
                   }}
-                  className="flex items-center gap-2 text-lg text-ink text-left"
+                  className="flex items-center gap-2 text-lg text-foreground text-left"
                 >
                   <LogOut size={18} strokeWidth={1.5} />
                   Sign out
@@ -240,11 +235,11 @@ export function Header() {
               </>
             ) : (
               <>
-                <Link to="/login" className="text-lg text-ink">
+                <Link to="/login" className="text-lg text-foreground py-1">
                   Sign in
                 </Link>
-                <Link to="/signup" className="btn-ink">
-                  Open a vault
+                <Link to="/signup" className="btn-primary">
+                  Create account
                 </Link>
               </>
             )}
@@ -261,14 +256,14 @@ function MobileVaultPicker() {
   if (vaults.length === 1 && currentVaultSummary) {
     return (
       <div className="pb-2">
-        <p className="eyebrow mb-2">Current vault</p>
-        <p className="font-serif text-xl">{currentVaultSummary.name}</p>
+        <p className="text-sm font-medium text-muted-foreground mb-1">Current vault</p>
+        <p className="text-xl">{currentVaultSummary.name}</p>
       </div>
     );
   }
   return (
     <div className="pb-2">
-      <label htmlFor="vault-mobile" className="eyebrow mb-2 block">
+      <label htmlFor="vault-mobile" className="field-label">
         Current vault
       </label>
       <select
