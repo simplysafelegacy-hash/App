@@ -1,0 +1,367 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Sealed — Design System
+ * A quiet, timeless palette inspired by fine stationery, wax seals,
+ * and the ink-on-paper feel of a private solicitor's office.
+ */
+
+@layer base {
+  :root {
+    /* Paper & ink — the canvas */
+    --paper: 42 44% 91%;           /* #F3EDE0 — warm cream letterhead */
+    --paper-alt: 42 53% 95%;       /* #F8F3E7 — lighter card stock */
+    --paper-sunk: 42 30% 87%;      /* #E8DFC9 — recessed/muted fields */
+    --ink: 36 12% 9%;              /* #1A1814 — deep warm ink */
+    --ink-muted: 31 9% 30%;        /* #544E45 — secondary text */
+    --ink-subtle: 37 8% 51%;       /* #8B8479 — captions, placeholders */
+    --hairline: 38 25% 75%;        /* #CFC5AF — primary borders */
+    --hairline-soft: 42 32% 85%;   /* #E5DECB — subtle borders */
+
+    /* The seal — single restrained accent */
+    --seal: 0 45% 33%;             /* #7A2E2E — oxblood */
+    --seal-hover: 0 45% 27%;       /* #621F1F */
+    --seal-soft: 0 30% 92%;        /* #EEDDDD — seal-tinted wash */
+
+    /* Rare metals — used sparingly for numerals & details */
+    --gold: 32 39% 54%;            /* #B8905A — warm gold */
+
+    /* System semantic (mapped to shadcn tokens) */
+    --background: var(--paper);
+    --foreground: var(--ink);
+    --card: var(--paper-alt);
+    --card-foreground: var(--ink);
+    --popover: var(--paper-alt);
+    --popover-foreground: var(--ink);
+    --primary: var(--ink);
+    --primary-foreground: var(--paper);
+    --secondary: var(--paper-sunk);
+    --secondary-foreground: var(--ink);
+    --muted: var(--paper-sunk);
+    --muted-foreground: var(--ink-muted);
+    --accent: var(--seal);
+    --accent-foreground: var(--paper);
+    --destructive: 0 55% 42%;
+    --destructive-foreground: var(--paper);
+    --success: 95 25% 32%;
+    --success-foreground: var(--paper);
+    --border: var(--hairline-soft);
+    --input: var(--hairline);
+    --ring: var(--seal);
+    --radius: 0.125rem; /* crisp, near-square corners */
+
+    --font-serif: 'Fraunces', ui-serif, 'Iowan Old Style', Georgia, serif;
+    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-italic-serif: 'Instrument Serif', ui-serif, Georgia, serif;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: 'ss01', 'ss02', 'cv11';
+  }
+
+  body {
+    background-color: hsl(var(--paper));
+    color: hsl(var(--ink));
+    font-family: var(--font-sans);
+    font-size: 17px; /* generous base for older readers */
+    line-height: 1.55;
+    font-weight: 400;
+    letter-spacing: -0.005em;
+  }
+
+  /* Warm paper grain — almost imperceptible, gives depth */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.35;
+    mix-blend-mode: multiply;
+    background-image:
+      radial-gradient(
+        circle at 20% 15%,
+        hsl(42 30% 80% / 0.25) 0%,
+        transparent 50%
+      ),
+      radial-gradient(
+        circle at 80% 85%,
+        hsl(35 25% 75% / 0.18) 0%,
+        transparent 50%
+      );
+  }
+
+  #root {
+    position: relative;
+    z-index: 1;
+    min-height: 100vh;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-serif);
+    font-weight: 400;
+    letter-spacing: -0.02em;
+    color: hsl(var(--ink));
+  }
+
+  ::selection {
+    background-color: hsl(var(--seal) / 0.9);
+    color: hsl(var(--paper));
+  }
+
+  /* Focus styling — visible but refined */
+  :focus-visible {
+    outline: 2px solid hsl(var(--seal));
+    outline-offset: 2px;
+  }
+
+  button:focus-visible,
+  a:focus-visible {
+    outline-offset: 3px;
+  }
+}
+
+@layer components {
+  /* The wordmark / eyebrow label — small-caps style */
+  .eyebrow {
+    font-family: var(--font-sans);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: hsl(var(--ink-muted));
+  }
+
+  .display-serif {
+    font-family: var(--font-serif);
+    font-variation-settings: 'opsz' 144, 'SOFT' 50;
+    letter-spacing: -0.03em;
+    line-height: 0.96;
+  }
+
+  .body-serif {
+    font-family: var(--font-serif);
+    font-variation-settings: 'opsz' 14, 'SOFT' 50;
+  }
+
+  .italic-serif {
+    font-family: var(--font-italic-serif);
+    font-style: italic;
+    font-weight: 400;
+    letter-spacing: -0.01em;
+  }
+
+  .rule {
+    height: 1px;
+    background-color: hsl(var(--hairline));
+    width: 100%;
+  }
+
+  .rule-dotted {
+    border-top: 1px dotted hsl(var(--hairline));
+    height: 0;
+    width: 100%;
+  }
+
+  /* Paper card — subtle layered look rather than heavy shadow */
+  .paper-card {
+    background-color: hsl(var(--paper-alt));
+    border: 1px solid hsl(var(--hairline-soft));
+    box-shadow:
+      0 1px 0 hsl(var(--hairline-soft)),
+      0 2px 8px -4px hsl(36 12% 9% / 0.06);
+  }
+
+  /* A deckle / torn-edge feel for document cards */
+  .deckle-edge {
+    position: relative;
+  }
+  .deckle-edge::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -1px;
+    height: 2px;
+    background-image: linear-gradient(
+      90deg,
+      transparent 0,
+      transparent 6px,
+      hsl(var(--hairline-soft)) 6px,
+      hsl(var(--hairline-soft)) 14px,
+      transparent 14px
+    );
+    background-size: 20px 2px;
+  }
+
+  /* Monogram mark — our "S" wax seal */
+  .seal-mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 9999px;
+    background-color: hsl(var(--seal));
+    color: hsl(var(--paper));
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-weight: 500;
+    font-size: 1.1rem;
+    font-variation-settings: 'opsz' 144, 'SOFT' 100;
+    line-height: 1;
+    letter-spacing: 0;
+    box-shadow:
+      inset 0 0 0 1px hsl(var(--paper) / 0.1),
+      0 0 0 1px hsl(var(--seal) / 0.15);
+  }
+
+  /* Generous input — sized for older eyes */
+  .field {
+    @apply w-full bg-transparent border-0 border-b border-hairline py-3 px-0 text-[17px] placeholder:text-ink-subtle focus:outline-none focus:border-ink transition-colors;
+    font-family: var(--font-sans);
+  }
+
+  .field-boxed {
+    @apply w-full bg-paper-alt border border-hairline-soft px-4 py-3 text-[17px] placeholder:text-ink-subtle focus:outline-none focus:border-ink transition-colors;
+    font-family: var(--font-sans);
+    border-radius: 2px;
+  }
+
+  .field-label {
+    @apply block text-[13px] font-medium text-ink-muted mb-2;
+    font-family: var(--font-sans);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  /* Buttons — squared, ink-filled, no gradients */
+  .btn-ink {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.875rem 1.75rem;
+    min-height: 52px;
+    font-family: var(--font-sans);
+    font-weight: 500;
+    font-size: 16px;
+    letter-spacing: 0.01em;
+    background-color: hsl(var(--ink));
+    color: hsl(var(--paper));
+    border: 1px solid hsl(var(--ink));
+    border-radius: 2px;
+    transition: all 0.2s ease;
+    cursor: pointer;
+  }
+  .btn-ink:hover {
+    background-color: hsl(var(--seal));
+    border-color: hsl(var(--seal));
+  }
+  .btn-ink:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .btn-ghost {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.875rem 1.75rem;
+    min-height: 52px;
+    font-family: var(--font-sans);
+    font-weight: 500;
+    font-size: 16px;
+    background-color: transparent;
+    color: hsl(var(--ink));
+    border: 1px solid hsl(var(--hairline));
+    border-radius: 2px;
+    transition: all 0.2s ease;
+    cursor: pointer;
+  }
+  .btn-ghost:hover {
+    border-color: hsl(var(--ink));
+    background-color: hsl(var(--paper-alt));
+  }
+
+  .btn-seal {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.875rem 1.75rem;
+    min-height: 52px;
+    font-family: var(--font-sans);
+    font-weight: 500;
+    font-size: 16px;
+    background-color: hsl(var(--seal));
+    color: hsl(var(--paper));
+    border: 1px solid hsl(var(--seal));
+    border-radius: 2px;
+    transition: all 0.2s ease;
+    cursor: pointer;
+  }
+  .btn-seal:hover {
+    background-color: hsl(var(--seal-hover));
+    border-color: hsl(var(--seal-hover));
+  }
+
+  .link-ink {
+    color: hsl(var(--ink));
+    text-decoration: none;
+    border-bottom: 1px solid hsl(var(--hairline));
+    padding-bottom: 1px;
+    transition: border-color 0.2s ease;
+  }
+  .link-ink:hover {
+    border-color: hsl(var(--seal));
+    color: hsl(var(--seal));
+  }
+
+  /* Entrance animations — restrained, staggered */
+  .fade-in-up {
+    animation: fade-in-up 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .fade-in {
+    animation: fade-in 0.9s ease-out both;
+  }
+  .delay-100 { animation-delay: 100ms; }
+  .delay-200 { animation-delay: 200ms; }
+  .delay-300 { animation-delay: 300ms; }
+  .delay-400 { animation-delay: 400ms; }
+  .delay-500 { animation-delay: 500ms; }
+  .delay-700 { animation-delay: 700ms; }
+  .delay-1000 { animation-delay: 1000ms; }
+
+  @keyframes fade-in-up {
+    from {
+      opacity: 0;
+      transform: translateY(14px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+}
+
+@layer utilities {
+  .text-balance { text-wrap: balance; }
+  .text-pretty { text-wrap: pretty; }
+  .tnum { font-variant-numeric: tabular-nums; }
+}
