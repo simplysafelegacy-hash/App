@@ -9,8 +9,6 @@ import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import CreateVault from "./pages/CreateVault";
 import Dashboard from "./pages/Dashboard";
-import AddDocument from "./pages/AddDocument";
-import DocumentDetail from "./pages/DocumentDetail";
 import Members from "./pages/Members";
 import Plans from "./pages/Plans";
 import NotFound from "./pages/NotFound";
@@ -30,8 +28,6 @@ const App = () => (
             <Route path="/signup" element={<Signup />} />
             <Route path="/create-vault" element={<CreateVault />} />
             <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/add-document" element={<AddDocument />} />
-            <Route path="/document/:id" element={<DocumentDetail />} />
             <Route path="/members" element={<Members />} />
             <Route path="/viewers" element={<Members />} />
             <Route path="/plans" element={<Plans />} />

@@ -7,17 +7,17 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/sealed/backend/internal/auth"
-	"github.com/sealed/backend/internal/models"
+	"github.com/simplysafelegacy/backend/internal/auth"
+	"github.com/simplysafelegacy/backend/internal/models"
 )
 
 // CtxVault is the per-request vault scope, populated by the vault middleware
 // after looking up the caller's membership.
 type CtxVault struct {
-	VaultID    string
-	Role       string
-	Released   bool   // vault.released_at IS NOT NULL
-	MemberID   string // the caller's vault_members.id (used for access checks)
+	VaultID  string
+	Role     string
+	Released bool   // vault.released_at IS NOT NULL
+	MemberID string // the caller's vault_members.id
 }
 
 // CanRead reports whether the caller may see vault contents.
@@ -35,14 +35,10 @@ func (v CtxVault) CanRead() bool {
 }
 
 // CanModify reports whether the caller may add, edit, or delete vault
-// contents (documents, members, vault metadata).
+// contents (the will, members, vault metadata).
 func (v CtxVault) CanModify() bool {
 	return v.Role == models.RoleOwner
 }
-
-// CanDownload reports whether the caller may obtain presigned GET URLs for
-// document files. Mirrors CanRead.
-func (v CtxVault) CanDownload() bool { return v.CanRead() }
 
 type ctxKey string
 
@@ -71,9 +67,9 @@ func (d *Deps) VaultMiddleware(next http.Handler) http.Handler {
 		}
 
 		var (
-			released  *string
-			role      string
-			memberID  string
+			released *string
+			role     string
+			memberID string
 		)
 		err := d.DB.QueryRow(r.Context(), `
 			SELECT vm.id, vm.role::text, v.released_at::text

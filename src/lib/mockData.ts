@@ -1,5 +1,4 @@
 import type {
-  Document,
   Notification,
   User,
   Vault,
@@ -12,6 +11,9 @@ export const mockOwner: User = {
   name: "Jane Mitchell",
   email: "jane.mitchell@email.com",
   phone: "(555) 123-4567",
+  subscriptionStatus: "active",
+  subscriptionPlan: "family",
+  currentPeriodEnd: "2027-03-01T00:00:00Z",
 };
 
 const janeOwnVaultId = "vault-jane";
@@ -24,7 +26,6 @@ const janeOwnerMember: VaultMember = {
   name: "Jane Mitchell",
   email: "jane.mitchell@email.com",
   role: "owner",
-  documentIds: [],
 };
 
 const stewardSon: VaultMember = {
@@ -33,7 +34,6 @@ const stewardSon: VaultMember = {
   name: "Michael Mitchell",
   email: "michael.mitchell@email.com",
   role: "steward",
-  documentIds: ["doc-jane-1", "doc-jane-2"],
 };
 
 const successorDaughter: VaultMember = {
@@ -42,53 +42,7 @@ const successorDaughter: VaultMember = {
   name: "Anna Mitchell",
   email: "anna.mitchell@email.com",
   role: "successor",
-  documentIds: ["doc-jane-1"],
 };
-
-const janesDocuments: Document[] = [
-  {
-    id: "doc-jane-1",
-    type: "will",
-    name: "Last Will and Testament",
-    fileName: "will_2026.pdf",
-    hasFile: true,
-    locationType: "home_safe",
-    address: "14 Oak Ridge Drive",
-    description: "Top shelf, black fireproof safe",
-    memberIds: ["member-michael-steward", "member-anna-successor"],
-    lastUpdated: "2026-01-15T00:00:00Z",
-    createdAt: "2026-01-10T00:00:00Z",
-  },
-  {
-    id: "doc-jane-2",
-    type: "power_of_attorney",
-    name: "Durable Power of Attorney",
-    fileName: "poa_2026.pdf",
-    hasFile: true,
-    locationType: "gun_sitters_vault",
-    address: "221 Industrial Way",
-    description: "Box #14",
-    memberIds: ["member-michael-steward"],
-    lastUpdated: "2026-02-20T00:00:00Z",
-    createdAt: "2026-02-18T00:00:00Z",
-  },
-];
-
-const fathersDocuments: Document[] = [
-  {
-    id: "doc-robert-1",
-    type: "trust",
-    name: "Mitchell Family Trust",
-    fileName: "trust.pdf",
-    hasFile: true,
-    locationType: "attorney_office",
-    address: "Reed & Kane, Esq.",
-    description: "Filed under R. Mitchell, drawer two",
-    memberIds: ["member-jane-as-steward"],
-    lastUpdated: "2025-11-04T00:00:00Z",
-    createdAt: "2025-11-04T00:00:00Z",
-  },
-];
 
 export const mockVault: Vault = {
   id: janeOwnVaultId,
@@ -100,7 +54,13 @@ export const mockVault: Vault = {
   emergencyContactName: "Michael Mitchell",
   emergencyContactPhone: "(555) 987-6543",
   releasedAt: null,
-  documents: janesDocuments,
+  will: {
+    hasWill: true,
+    locationType: "home_safe",
+    locationAddress: "14 Oak Ridge Drive",
+    locationDescription: "Top shelf of the black fireproof safe",
+    updatedAt: "2026-01-15T00:00:00Z",
+  },
   members: [janeOwnerMember, stewardSon, successorDaughter],
   createdAt: "2026-01-01T00:00:00Z",
 };
@@ -115,7 +75,13 @@ const fathersVault: Vault = {
   emergencyContactName: "Jane Mitchell",
   emergencyContactPhone: "(555) 123-4567",
   releasedAt: null,
-  documents: fathersDocuments,
+  will: {
+    hasWill: true,
+    locationType: "attorney_office",
+    locationAddress: "Reed & Kane, Esq.",
+    locationDescription: "Filed under R. Mitchell, drawer two",
+    updatedAt: "2025-11-04T00:00:00Z",
+  },
   members: [
     {
       id: "member-robert-owner",
@@ -123,7 +89,6 @@ const fathersVault: Vault = {
       name: "Robert Mitchell",
       email: "robert.mitchell@email.com",
       role: "owner",
-      documentIds: [],
     },
     {
       id: "member-jane-as-steward",
@@ -131,7 +96,6 @@ const fathersVault: Vault = {
       name: "Jane Mitchell",
       email: "jane.mitchell@email.com",
       role: "steward",
-      documentIds: ["doc-robert-1"],
     },
   ],
   createdAt: "2025-09-12T00:00:00Z",
@@ -147,7 +111,7 @@ const sealedVault: Vault = {
   emergencyContactName: "",
   emergencyContactPhone: "",
   releasedAt: null,
-  documents: [], // sealed for successors before release
+  will: { hasWill: false, locationType: "", locationAddress: "", locationDescription: "" },
   members: [],
   createdAt: "2025-06-30T00:00:00Z",
 };
@@ -197,8 +161,8 @@ export const mockVaultsById: Record<string, Vault> = {
 export const mockNotifications: Notification[] = [
   {
     id: "notif-1",
-    type: "document_added",
-    message: "Power of Attorney document added",
+    type: "will_updated",
+    message: "Will details updated",
     timestamp: "2026-02-20T00:00:00Z",
     read: false,
     vaultId: janeOwnVaultId,
@@ -212,22 +176,3 @@ export const mockNotifications: Notification[] = [
     vaultId: janeOwnVaultId,
   },
 ];
-
-export const documentTypeLabels: Record<string, string> = {
-  will: "Will",
-  power_of_attorney: "Power of Attorney",
-  living_will: "Living Will",
-  trust: "Trust",
-  deed: "Deed",
-  life_insurance: "Life Insurance",
-  beneficiary_form: "Beneficiary Form",
-  other: "Other",
-};
-
-export const locationTypeLabels: Record<string, string> = {
-  home_safe: "Home Safe",
-  bank_safety_deposit: "Bank Safety Deposit Box",
-  attorney_office: "Attorney Office",
-  gun_sitters_vault: "Gun Sitters Vault",
-  other: "Other",
-};

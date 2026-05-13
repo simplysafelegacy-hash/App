@@ -6,8 +6,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/sealed/backend/internal/auth"
-	"github.com/sealed/backend/internal/models"
+	"github.com/simplysafelegacy/backend/internal/auth"
+	"github.com/simplysafelegacy/backend/internal/models"
 )
 
 func (d *Deps) ListNotifications(w http.ResponseWriter, r *http.Request) {

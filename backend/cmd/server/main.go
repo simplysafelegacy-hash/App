@@ -10,12 +10,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/sealed/backend/internal/auth"
-	"github.com/sealed/backend/internal/config"
-	"github.com/sealed/backend/internal/db"
-	"github.com/sealed/backend/internal/handlers"
-	"github.com/sealed/backend/internal/router"
-	"github.com/sealed/backend/internal/storage"
+	"github.com/simplysafelegacy/backend/internal/auth"
+	"github.com/simplysafelegacy/backend/internal/config"
+	"github.com/simplysafelegacy/backend/internal/db"
+	"github.com/simplysafelegacy/backend/internal/handlers"
+	"github.com/simplysafelegacy/backend/internal/router"
 )
 
 func main() {
@@ -46,27 +45,9 @@ func main() {
 	}
 	defer pool.Close()
 
-	s3Client, err := storage.New(ctx, storage.Config{
-		Region:       cfg.S3Region,
-		Bucket:       cfg.S3Bucket,
-		Endpoint:     cfg.S3Endpoint,
-		AccessKey:    cfg.S3AccessKey,
-		SecretKey:    cfg.S3SecretKey,
-		UsePathStyle: cfg.S3UsePathStyle,
-	})
-	if err != nil {
-		log.Fatalf("s3: %v", err)
-	}
-	if cfg.S3Endpoint != "" {
-		// MinIO / LocalStack: auto-create the bucket so dev is one-command.
-		if err := s3Client.EnsureBucket(ctx); err != nil {
-			log.Printf("warn: could not ensure bucket: %v", err)
-		}
-	}
-
 	authSvc := auth.New(cfg.JWTSecret, cfg.JWTExpiry)
 	googleSvc := auth.NewGoogleService(cfg.GoogleClientID, cfg.GoogleClientSecret)
-	deps := handlers.New(pool, authSvc, googleSvc, s3Client, logger, cfg.Env == "development")
+	deps := handlers.New(pool, authSvc, googleSvc, handlers.StripeConfigFrom(cfg), logger, cfg.Env == "development")
 	h := router.New(deps, authSvc, cfg.AllowedOrigins, logger)
 
 	srv := &http.Server{
@@ -79,7 +60,7 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("sealed listening on :%s (env=%s)", cfg.Port, cfg.Env)
+		log.Printf("simplysafelegacy listening on :%s (env=%s)", cfg.Port, cfg.Env)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("server: %v", err)
 		}
@@ -96,5 +77,5 @@ func main() {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Printf("shutdown: %v", err)
 	}
-	log.Println("sealed stopped")
+	log.Println("simplysafelegacy stopped")
 }

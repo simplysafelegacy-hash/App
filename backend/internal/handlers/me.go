@@ -3,7 +3,7 @@ package handlers
 import (
 	"net/http"
 
-	"github.com/sealed/backend/internal/models"
+	"github.com/simplysafelegacy/backend/internal/models"
 )
 
 // ListMyVaults returns every vault the caller has access to — owned or

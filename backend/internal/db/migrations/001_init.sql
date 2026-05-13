@@ -1,4 +1,4 @@
--- 001_init.sql — canonical Sealed schema.
+-- 001_init.sql — canonical Simply Safe Legacy schema.
 -- Idempotent: every CREATE uses IF NOT EXISTS so re-running is safe.
 --
 -- Domain model:

@@ -1,25 +1,32 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Layout } from "@/components/layout/Layout";
 import { useApp } from "@/context/AppContext";
-import { documentTypeLabels, locationTypeLabels } from "@/lib/mockData";
-import { roleLabel } from "@/lib/permissions";
+import { roleLabel, willLocationLabel } from "@/lib/permissions";
 import { RoleBadge } from "@/components/VaultSwitcher";
-import { ArrowUpRight, Download, Plus, Unlock } from "lucide-react";
+import type { Will, WillLocationType } from "@/lib/types";
+import { Pencil, Plus, Unlock } from "lucide-react";
+
+const WILL_LOCATIONS: { value: WillLocationType; label: string }[] = [
+  { value: "home_safe", label: "Home safe" },
+  { value: "bank_safety_deposit", label: "Bank safety deposit box" },
+  { value: "attorney_office", label: "Attorney's office" },
+  { value: "other", label: "Other" },
+];
 
 export default function Dashboard() {
   const {
     vault,
     isAuthenticated,
     currentUser,
-    notifications,
     permissions,
     currentVaultSummary,
     releaseVault,
-    downloadDocument,
     loading,
+    refreshVault,
   } = useApp();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   useEffect(() => {
     if (loading) return;
@@ -27,26 +34,36 @@ export default function Dashboard() {
     else if (!vault && permissions.isOwner) navigate("/create-vault");
   }, [isAuthenticated, vault, permissions.isOwner, loading, navigate]);
 
+  // After Stripe Checkout returns the user lands on /dashboard?subscription=success.
+  // Refresh the vault & user so the new subscription state shows up.
+  useEffect(() => {
+    if (searchParams.get("subscription") === "success") {
+      refreshVault().catch(() => {});
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete("subscription");
+          next.delete("session_id");
+          return next;
+        },
+        { replace: true },
+      );
+    }
+  }, [searchParams, setSearchParams, refreshVault]);
+
   if (!vault || !currentVaultSummary) return null;
 
   if (permissions.isSealed) {
     return <SealedSuccessorView vaultName={vault.name} ownerName={vault.ownerName} />;
   }
 
-  const docCount = vault.documents.length;
   const memberCount = vault.members.filter((m) => m.role !== "owner").length;
-  const lastUpdated =
-    docCount > 0
-      ? new Date(
-          Math.max(...vault.documents.map((d) => new Date(d.lastUpdated).getTime())),
-        )
-      : null;
   const firstName = (currentUser?.name || vault.ownerName).split(" ")[0];
 
   return (
     <Layout>
-      <div className="container py-8 md:py-12">
-        <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-6 mb-8">
+      <div className="container py-8 md:py-12 max-w-4xl">
+        <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-8">
           <div>
             <div className="flex items-center gap-2 mb-3">
               <RoleBadge role={currentVaultSummary.role} />
@@ -63,284 +80,377 @@ export default function Dashboard() {
             </h1>
             <p className="mt-2 text-lg text-muted-foreground max-w-xl">
               {permissions.isOwner
-                ? "Your documents, the people who may see them, and where they're kept."
+                ? "Your will, who can see it, and where it's kept."
                 : permissions.isSteward
-                  ? "Documents granted to you are listed below."
-                  : "You are named as a successor. Access has been released."}
+                  ? "You can see the will and where it's kept."
+                  : "Access has been released."}
             </p>
           </div>
-          {permissions.canModify ? (
-            <div className="flex flex-col sm:flex-row gap-2 shrink-0">
-              <Link to="/add-document" className="btn-primary">
-                <Plus size={18} strokeWidth={1.75} />
-                Add document
-              </Link>
-              <ReleaseButton released={!!vault.releasedAt} onToggle={releaseVault} />
-            </div>
-          ) : null}
+          {permissions.canModify && (
+            <ReleaseButton released={!!vault.releasedAt} onToggle={releaseVault} />
+          )}
         </header>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-10">
-          <StatCard
-            label="Documents"
-            value={docCount.toString()}
-            sub={
-              permissions.isOwner
-                ? `${docCount === 1 ? "1 document" : `${docCount} documents`} recorded`
-                : `${docCount === 1 ? "1 document" : `${docCount} documents`} granted`
-            }
-          />
-          {permissions.isOwner ? (
-            <>
-              <StatCard
-                label="People"
-                value={memberCount.toString()}
-                sub={
-                  memberCount === 0
-                    ? "None named yet"
-                    : `${memberCount === 1 ? "1 person" : `${memberCount} people`} named`
-                }
-              />
-              <StatCard
-                label="Last update"
-                value={
-                  lastUpdated
-                    ? lastUpdated.toLocaleDateString("en-US", {
-                        month: "short",
-                        day: "numeric",
-                      })
-                    : "—"
-                }
-                sub={
-                  lastUpdated
-                    ? lastUpdated.toLocaleDateString("en-US", { year: "numeric" })
-                    : "No documents yet"
-                }
-              />
-            </>
-          ) : (
-            <>
-              <StatCard
-                label="Owner"
-                value={vault.ownerName.split(" ")[0]}
-                sub={vault.ownerName}
-              />
-              <StatCard
-                label="Status"
-                value={vault.releasedAt ? "Released" : "Sealed"}
-                sub={
-                  vault.releasedAt
-                    ? new Date(vault.releasedAt).toLocaleDateString("en-US", {
-                        month: "long",
-                        day: "numeric",
-                        year: "numeric",
-                      })
-                    : "Held in trust"
-                }
-              />
-            </>
-          )}
-        </div>
+        {permissions.isOwner && currentUser && (
+          <SubscriptionStrip user={currentUser} />
+        )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <section className="lg:col-span-2">
-            <div className="flex items-baseline justify-between mb-4">
-              <h2 className="text-2xl font-semibold">Documents</h2>
-              <p className="text-sm text-muted-foreground">
-                {docCount} {docCount === 1 ? "entry" : "entries"}
-              </p>
-            </div>
+        <WillCard
+          will={vault.will}
+          canEdit={permissions.canModify}
+        />
 
-            {docCount === 0 ? (
-              <EmptyDocuments canModify={permissions.canModify} />
-            ) : (
-              <ul className="card-surface divide-y divide-border">
-                {vault.documents.map((doc) => (
-                  <li
-                    key={doc.id}
-                    className="flex items-center gap-4 px-5 py-4 hover:bg-muted/50 transition-colors"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <Link
-                        to={`/document/${doc.id}`}
-                        className="block group"
-                      >
-                        <p className="text-lg font-medium text-foreground group-hover:text-primary transition-colors truncate">
-                          {doc.name}
-                        </p>
-                        <p className="text-sm text-muted-foreground truncate">
-                          {documentTypeLabels[doc.type]} · {locationTypeLabels[doc.locationType]}
-                        </p>
-                      </Link>
-                    </div>
-                    <div className="hidden md:block text-right shrink-0">
-                      <p className="text-sm text-foreground tnum">
-                        {new Date(doc.lastUpdated).toLocaleDateString("en-US", {
-                          month: "short",
-                          day: "numeric",
-                          year: "numeric",
-                        })}
-                      </p>
-                      {permissions.isOwner && (
-                        <p className="text-xs text-muted-foreground">
-                          {doc.memberIds.length}{" "}
-                          {doc.memberIds.length === 1 ? "person" : "people"}
-                        </p>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      {doc.hasFile && permissions.canDownload && (
-                        <button
-                          onClick={() => downloadDocument(doc.id)}
-                          className="p-2 text-muted-foreground hover:text-primary transition-colors rounded-md"
-                          aria-label="Download"
-                          title="Download"
-                        >
-                          <Download size={18} strokeWidth={1.5} />
-                        </button>
-                      )}
-                      <Link
-                        to={`/document/${doc.id}`}
-                        className="p-2 text-muted-foreground hover:text-primary transition-colors rounded-md"
-                        aria-label="View"
-                      >
-                        <ArrowUpRight size={18} strokeWidth={1.5} />
-                      </Link>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
+        <div className="h-8" />
 
-          <aside className="space-y-6">
-            {permissions.isOwner && (
-              <Panel
-                title="People"
-                action={{ to: "/members", label: "Manage" }}
-              >
-                {vault.members.filter((m) => m.role !== "owner").length === 0 ? (
-                  <p className="text-muted-foreground py-2">
-                    No one named yet.
-                  </p>
-                ) : (
-                  <ul className="divide-y divide-border">
-                    {vault.members
-                      .filter((m) => m.role !== "owner")
-                      .map((m) => (
-                        <li key={m.id} className="py-3 flex items-center gap-3">
-                          <Avatar name={m.name} />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-foreground font-medium truncate">
-                              {m.name}
-                            </p>
-                            <p className="text-sm text-muted-foreground truncate">
-                              {roleLabel[m.role]}
-                            </p>
-                          </div>
-                          <p className="text-sm text-muted-foreground shrink-0">
-                            {m.documentIds.length}{" "}
-                            {m.documentIds.length === 1 ? "doc" : "docs"}
-                          </p>
-                        </li>
-                      ))}
-                  </ul>
-                )}
-              </Panel>
-            )}
+        <PeopleCard
+          memberCount={memberCount}
+          released={!!vault.releasedAt}
+          canEdit={permissions.canModify}
+        />
 
-            {(permissions.isOwner || vault.emergencyContactName) && (
-              <Panel title="Emergency contact">
-                {vault.emergencyContactName ? (
-                  <div>
-                    <p className="text-lg font-medium">
-                      {vault.emergencyContactName}
-                    </p>
-                    <p className="text-muted-foreground tnum">
-                      {vault.emergencyContactPhone}
-                    </p>
-                  </div>
-                ) : (
-                  <p className="text-muted-foreground">Not visible to you.</p>
-                )}
-              </Panel>
-            )}
-
-            <Panel title="Recent activity">
-              {notifications.length === 0 ? (
-                <p className="text-muted-foreground">Nothing new.</p>
-              ) : (
-                <ul className="divide-y divide-border">
-                  {notifications.slice(0, 4).map((n) => (
-                    <li key={n.id} className="py-3">
-                      <p className="text-base text-foreground leading-snug">
-                        {n.message}
-                      </p>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        {new Date(n.timestamp).toLocaleDateString("en-US", {
-                          month: "long",
-                          day: "numeric",
-                        })}
-                      </p>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </Panel>
-          </aside>
-        </div>
+        {permissions.isOwner && vault.emergencyContactName && (
+          <>
+            <div className="h-8" />
+            <EmergencyCard
+              name={vault.emergencyContactName}
+              phone={vault.emergencyContactPhone}
+            />
+          </>
+        )}
       </div>
     </Layout>
   );
 }
 
-function StatCard({
-  label,
-  value,
-  sub,
-}: {
-  label: string;
-  value: string;
-  sub: string;
-}) {
+function SubscriptionStrip({ user }: { user: { subscriptionStatus?: string | null; subscriptionPlan?: string | null; currentPeriodEnd?: string | null } }) {
+  const { openCustomerPortal } = useApp();
+  const status = user.subscriptionStatus;
+  const plan = user.subscriptionPlan;
+
+  if (!status) {
+    return (
+      <div className="card-surface p-4 mb-8 flex items-center justify-between gap-4 bg-secondary/40">
+        <div>
+          <p className="text-base font-medium">No active plan</p>
+          <p className="text-sm text-muted-foreground">
+            Pick a plan to continue using Simply Safe Legacy.
+          </p>
+        </div>
+        <Link to="/plans" className="btn-primary !min-h-[40px] !text-sm">
+          See plans
+        </Link>
+      </div>
+    );
+  }
+
+  const renews = user.currentPeriodEnd
+    ? new Date(user.currentPeriodEnd).toLocaleDateString("en-US", {
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+      })
+    : null;
+
   return (
-    <div className="card-surface p-5">
-      <p className="text-sm font-medium text-muted-foreground">{label}</p>
-      <p className="text-3xl font-bold text-foreground mt-1 tnum">{value}</p>
-      <p className="text-sm text-muted-foreground mt-1">{sub}</p>
+    <div className="card-surface p-4 mb-8 flex items-center justify-between gap-4">
+      <div>
+        <p className="text-base font-medium capitalize">
+          {plan ?? "Active"} plan
+          <span className="text-muted-foreground font-normal">
+            {" · "}
+            {status === "trialing" ? "Trial" : status}
+          </span>
+        </p>
+        {renews && (
+          <p className="text-sm text-muted-foreground">
+            {status === "canceled" ? "Ends" : "Renews"} {renews}
+          </p>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={() => openCustomerPortal().catch(() => {})}
+        className="btn-secondary !min-h-[40px] !text-sm"
+      >
+        Manage
+      </button>
     </div>
   );
 }
 
-function Panel({
-  title,
-  action,
-  children,
+function WillCard({ will, canEdit }: { will: Will; canEdit: boolean }) {
+  const { updateWill } = useApp();
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [draft, setDraft] = useState({
+    hasWill: will.hasWill,
+    locationType: will.locationType || "",
+    locationAddress: will.locationAddress,
+    locationDescription: will.locationDescription,
+  });
+
+  // Reset draft if vault data updates underneath us.
+  useEffect(() => {
+    setDraft({
+      hasWill: will.hasWill,
+      locationType: will.locationType || "",
+      locationAddress: will.locationAddress,
+      locationDescription: will.locationDescription,
+    });
+  }, [will]);
+
+  const onSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await updateWill({
+        hasWill: draft.hasWill,
+        locationType: draft.hasWill ? draft.locationType : "",
+        locationAddress: draft.hasWill ? draft.locationAddress : "",
+        locationDescription: draft.hasWill ? draft.locationDescription : "",
+      });
+      setEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <section className="card-surface p-6 md:p-8">
+      <div className="flex items-baseline justify-between mb-4">
+        <h2 className="text-2xl font-semibold">Your will</h2>
+        {canEdit && !editing && (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="btn-secondary !min-h-[36px] !text-sm"
+          >
+            <Pencil size={14} strokeWidth={1.75} />
+            Edit
+          </button>
+        )}
+      </div>
+
+      {!editing ? (
+        will.hasWill ? (
+          <dl className="space-y-3">
+            <div>
+              <dt className="text-sm font-medium text-muted-foreground">Status</dt>
+              <dd className="text-base text-foreground">
+                Yes — recorded
+              </dd>
+            </div>
+            <div>
+              <dt className="text-sm font-medium text-muted-foreground">
+                Where it's kept
+              </dt>
+              <dd className="text-base text-foreground">
+                {willLocationLabel[will.locationType] || will.locationType || "—"}
+              </dd>
+            </div>
+            {will.locationAddress && (
+              <div>
+                <dt className="text-sm font-medium text-muted-foreground">
+                  Address
+                </dt>
+                <dd className="text-base text-foreground">
+                  {will.locationAddress}
+                </dd>
+              </div>
+            )}
+            {will.locationDescription && (
+              <div>
+                <dt className="text-sm font-medium text-muted-foreground">
+                  Exact location
+                </dt>
+                <dd className="text-base text-foreground">
+                  {will.locationDescription}
+                </dd>
+              </div>
+            )}
+          </dl>
+        ) : (
+          <div>
+            <p className="text-muted-foreground mb-4">
+              You haven't recorded a will yet.
+            </p>
+            {canEdit && (
+              <button
+                type="button"
+                onClick={() => setEditing(true)}
+                className="btn-primary"
+              >
+                <Plus size={18} strokeWidth={1.75} />
+                Record your will
+              </button>
+            )}
+          </div>
+        )
+      ) : (
+        <form onSubmit={onSave} className="space-y-5">
+          <fieldset>
+            <legend className="field-label mb-3">
+              Do you have a will?
+            </legend>
+            <div className="flex gap-2">
+              <ToggleOption
+                checked={draft.hasWill}
+                onClick={() => setDraft((d) => ({ ...d, hasWill: true }))}
+                label="Yes"
+              />
+              <ToggleOption
+                checked={!draft.hasWill}
+                onClick={() => setDraft((d) => ({ ...d, hasWill: false }))}
+                label="Not yet"
+              />
+            </div>
+          </fieldset>
+
+          {draft.hasWill && (
+            <>
+              <div>
+                <label htmlFor="locationType" className="field-label">
+                  Where is the original kept?
+                </label>
+                <select
+                  id="locationType"
+                  required
+                  value={draft.locationType}
+                  onChange={(e) =>
+                    setDraft({ ...draft, locationType: e.target.value })
+                  }
+                  className="field"
+                >
+                  <option value="" disabled>
+                    Select a location…
+                  </option>
+                  {WILL_LOCATIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label htmlFor="locationAddress" className="field-label">
+                  Address or branch
+                </label>
+                <input
+                  id="locationAddress"
+                  type="text"
+                  placeholder="e.g. 14 Oak Ridge Drive"
+                  value={draft.locationAddress}
+                  onChange={(e) =>
+                    setDraft({ ...draft, locationAddress: e.target.value })
+                  }
+                  className="field"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="locationDescription" className="field-label">
+                  Exact location
+                </label>
+                <textarea
+                  id="locationDescription"
+                  placeholder="e.g. Top shelf of the black fireproof safe"
+                  rows={3}
+                  value={draft.locationDescription}
+                  onChange={(e) =>
+                    setDraft({ ...draft, locationDescription: e.target.value })
+                  }
+                  className="field resize-none"
+                />
+                <p className="field-hint">
+                  Help whoever's looking for this find it without a search.
+                </p>
+              </div>
+            </>
+          )}
+
+          <div className="flex items-center justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={() => setEditing(false)}
+              className="btn-secondary"
+              disabled={saving}
+            >
+              Cancel
+            </button>
+            <button type="submit" className="btn-primary" disabled={saving}>
+              {saving ? "Saving…" : "Save"}
+            </button>
+          </div>
+        </form>
+      )}
+    </section>
+  );
+}
+
+function ToggleOption({
+  checked,
+  onClick,
+  label,
 }: {
-  title: string;
-  action?: { to: string; label: string };
-  children: React.ReactNode;
+  checked: boolean;
+  onClick: () => void;
+  label: string;
 }) {
   return (
-    <div className="card-surface p-5">
-      <div className="flex items-baseline justify-between mb-2">
-        <h3 className="text-lg font-semibold">{title}</h3>
-        {action && (
-          <Link to={action.to} className="text-sm link">
-            {action.label}
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex-1 px-4 py-3 rounded-md border text-base font-medium transition-colors ${
+        checked
+          ? "bg-primary text-primary-foreground border-primary"
+          : "bg-card text-foreground border-border hover:bg-muted"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
+function PeopleCard({
+  memberCount,
+  released,
+  canEdit,
+}: {
+  memberCount: number;
+  released: boolean;
+  canEdit: boolean;
+}) {
+  return (
+    <section className="card-surface p-6 md:p-8">
+      <div className="flex items-baseline justify-between mb-3">
+        <h2 className="text-2xl font-semibold">Who has access</h2>
+        {canEdit && (
+          <Link to="/members" className="link text-sm">
+            Manage people
           </Link>
         )}
       </div>
-      {children}
-    </div>
+      <p className="text-muted-foreground">
+        {memberCount === 0
+          ? "Nobody else can see this vault yet."
+          : memberCount === 1
+            ? "1 person has been named."
+            : `${memberCount} people have been named.`}{" "}
+        Stewards can see your will now. Successors are{" "}
+        {released ? "now able to see it." : "sealed out until you release the vault."}
+      </p>
+    </section>
   );
 }
 
-function Avatar({ name }: { name: string }) {
+function EmergencyCard({ name, phone }: { name: string; phone: string }) {
   return (
-    <span className="w-9 h-9 rounded-full bg-secondary text-foreground inline-flex items-center justify-center text-sm font-semibold shrink-0">
-      {name.charAt(0).toUpperCase()}
-    </span>
+    <section className="card-surface p-6 md:p-8">
+      <h2 className="text-xl font-semibold mb-2">Emergency contact</h2>
+      <p className="text-base font-medium">{name}</p>
+      <p className="text-muted-foreground tnum">{phone}</p>
+    </section>
   );
 }
 
@@ -373,7 +483,7 @@ function ReleaseButton({
             <p className="text-muted-foreground mb-6">
               {released
                 ? "Successors will lose access until you release the vault again."
-                : "Successors will gain immediate access to the documents granted to them. Stewards already had access."}
+                : "Successors will gain immediate access. Stewards already had access."}
             </p>
             <div className="flex gap-3 justify-end">
               <button
@@ -399,27 +509,6 @@ function ReleaseButton({
   );
 }
 
-function EmptyDocuments({ canModify }: { canModify: boolean }) {
-  return (
-    <div className="card-surface p-10 text-center">
-      <h3 className="text-xl font-semibold mb-2">
-        {canModify ? "No documents yet" : "Nothing has been granted to you yet"}
-      </h3>
-      <p className="text-muted-foreground mb-6 max-w-sm mx-auto">
-        {canModify
-          ? "Start with the most important one. For most people, that's the will itself."
-          : "When the vault owner grants you access to a document, it will appear here."}
-      </p>
-      {canModify && (
-        <Link to="/add-document" className="btn-primary inline-flex">
-          <Plus size={18} strokeWidth={1.75} />
-          Add the first document
-        </Link>
-      )}
-    </div>
-  );
-}
-
 function SealedSuccessorView({
   vaultName,
   ownerName,
@@ -437,9 +526,9 @@ function SealedSuccessorView({
           {vaultName} is being kept by {ownerName}.
         </p>
         <p className="text-muted-foreground">
-          You've been named as a successor — when the vault is released, the
-          documents granted to you will appear here. You'll be notified at
-          that time. Nothing is required of you now.
+          You've been named as a {roleLabel.successor.toLowerCase()} — when
+          the vault is released, the will details will appear here. You'll
+          be notified at that time. Nothing is required of you now.
         </p>
       </div>
     </Layout>

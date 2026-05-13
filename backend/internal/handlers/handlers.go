@@ -10,33 +10,59 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/sealed/backend/internal/auth"
-	"github.com/sealed/backend/internal/storage"
+	"github.com/simplysafelegacy/backend/internal/auth"
+	"github.com/simplysafelegacy/backend/internal/config"
 )
 
 // Deps carries everything the handlers need. The zero value is not usable;
 // construct via New.
 type Deps struct {
-	DB      *pgxpool.Pool
-	Auth    *auth.Service
-	Google  *auth.GoogleService
-	Storage *storage.Client
-	Logger  *slog.Logger
-	Dev     bool // when true, internal error responses include the underlying error
+	DB     *pgxpool.Pool
+	Auth   *auth.Service
+	Google *auth.GoogleService
+	Stripe StripeConfig
+	Logger *slog.Logger
+	Dev    bool
+}
+
+// StripeConfig is the subset of config the billing handler needs. Carved
+// off so handlers don't depend on the whole config package shape.
+type StripeConfig struct {
+	SecretKey        string
+	WebhookSecret    string
+	PublishableKey   string
+	PublicAppURL     string
+	PriceIndividual  string
+	PriceFamily      string
+	PriceSafekeeping string
+	TrialDays        int
+}
+
+func StripeConfigFrom(c *config.Config) StripeConfig {
+	return StripeConfig{
+		SecretKey:        c.StripeSecretKey,
+		WebhookSecret:    c.StripeWebhookSecret,
+		PublishableKey:   c.StripePublishableKey,
+		PublicAppURL:     c.PublicAppURL,
+		PriceIndividual:  c.StripePriceIndividual,
+		PriceFamily:      c.StripePriceFamily,
+		PriceSafekeeping: c.StripePriceSafekeeping,
+		TrialDays:        c.StripeTrialDays,
+	}
 }
 
 func New(
 	db *pgxpool.Pool,
 	authSvc *auth.Service,
 	google *auth.GoogleService,
-	s *storage.Client,
+	stripe StripeConfig,
 	logger *slog.Logger,
 	dev bool,
 ) *Deps {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Deps{DB: db, Auth: authSvc, Google: google, Storage: s, Logger: logger, Dev: dev}
+	return &Deps{DB: db, Auth: authSvc, Google: google, Stripe: stripe, Logger: logger, Dev: dev}
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

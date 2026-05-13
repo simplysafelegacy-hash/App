@@ -8,7 +8,6 @@ import type { Vault, VaultRole, VaultSummary } from "./types";
 export interface Permissions {
   canRead: boolean;
   canModify: boolean;
-  canDownload: boolean;
   isOwner: boolean;
   isSteward: boolean;
   isSuccessor: boolean;
@@ -24,11 +23,9 @@ export function permissionsFor(
   const isSuccessor = role === "successor";
   const canRead = isOwner || isSteward || (isSuccessor && released);
   const canModify = isOwner;
-  const canDownload = canRead;
   return {
     canRead,
     canModify,
-    canDownload,
     isOwner,
     isSteward,
     isSuccessor,
@@ -53,8 +50,14 @@ export const roleLabel: Record<VaultRole, string> = {
 
 export const roleDescription: Record<VaultRole, string> = {
   owner: "Holds the vault. Adds, amends, and releases its contents.",
-  steward:
-    "Trusted now. May view and retrieve copies of documents granted to them.",
+  steward: "Trusted now. May see the vault and where the will is kept.",
   successor:
     "Trusted later. Sealed out until the vault has been released by its owner.",
+};
+
+export const willLocationLabel: Record<string, string> = {
+  home_safe: "Home safe",
+  bank_safety_deposit: "Bank safety deposit box",
+  attorney_office: "Attorney's office",
+  other: "Other",
 };

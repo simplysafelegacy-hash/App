@@ -1,27 +1,41 @@
-export type DocumentType =
-  | "will"
-  | "power_of_attorney"
-  | "living_will"
-  | "trust"
-  | "deed"
-  | "life_insurance"
-  | "beneficiary_form"
-  | "other";
-
-export type LocationType =
+/**
+ * Where the original will is physically kept. Free-text "other" covers
+ * anything we haven't enumerated.
+ */
+export type WillLocationType =
   | "home_safe"
   | "bank_safety_deposit"
   | "attorney_office"
-  | "gun_sitters_vault"
   | "other";
 
 /**
  * Roles a user can hold on a particular vault.
  *  - owner     — the paying subscriber. Full control.
- *  - steward   — pre-event helper. May read & download. Cannot modify.
- *  - successor — sealed until the vault is released. Then read & download.
+ *  - steward   — pre-event helper. May read. Cannot modify.
+ *  - successor — sealed until the vault is released. Then read.
  */
 export type VaultRole = "owner" | "steward" | "successor";
+
+/**
+ * Subscription plan codes — must match the Stripe price-id mapping in
+ * the backend's billing handler.
+ */
+export type SubscriptionPlan = "individual" | "family" | "safekeeping";
+
+/**
+ * Stripe subscription lifecycle. Mirrors stripe-go's status values; we
+ * don't enumerate every possible string here, just the ones the UI
+ * branches on.
+ */
+export type SubscriptionStatus =
+  | "trialing"
+  | "active"
+  | "past_due"
+  | "canceled"
+  | "incomplete"
+  | "incomplete_expired"
+  | "unpaid"
+  | "paused";
 
 export interface User {
   id: string;
@@ -29,6 +43,14 @@ export interface User {
   email: string;
   phone?: string;
   avatarUrl?: string;
+
+  // Subscription state — null until the user picks a plan and Stripe
+  // confirms via webhook. Used by the dashboard to display status and
+  // by future feature gates.
+  subscriptionStatus?: SubscriptionStatus | null;
+  subscriptionPlan?: SubscriptionPlan | null;
+  currentPeriodEnd?: string | null;
+  trialEnd?: string | null;
 }
 
 export interface VaultMember {
@@ -37,21 +59,14 @@ export interface VaultMember {
   name: string;
   email: string;
   role: VaultRole;
-  documentIds: string[];
 }
 
-export interface Document {
-  id: string;
-  type: DocumentType;
-  name: string;
-  fileName?: string;
-  hasFile: boolean;
-  locationType: LocationType;
-  address: string;
-  description: string;
-  memberIds: string[];
-  lastUpdated: string | Date;
-  createdAt: string | Date;
+export interface Will {
+  hasWill: boolean;
+  locationType: WillLocationType | "";
+  locationAddress: string;
+  locationDescription: string;
+  updatedAt?: string | null;
 }
 
 export interface Vault {
@@ -64,7 +79,7 @@ export interface Vault {
   emergencyContactName: string;
   emergencyContactPhone: string;
   releasedAt?: string | null;
-  documents: Document[];
+  will: Will;
   members: VaultMember[];
   createdAt: string | Date;
 }
@@ -84,11 +99,7 @@ export interface VaultSummary {
 
 export interface Notification {
   id: string;
-  type:
-    | "document_added"
-    | "document_updated"
-    | "member_added"
-    | "viewer_added";
+  type: "will_updated" | "member_added" | "vault_released";
   message: string;
   timestamp: string | Date;
   read: boolean;

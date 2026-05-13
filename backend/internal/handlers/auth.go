@@ -9,8 +9,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/sealed/backend/internal/auth"
-	"github.com/sealed/backend/internal/models"
+	"github.com/simplysafelegacy/backend/internal/auth"
+	"github.com/simplysafelegacy/backend/internal/models"
 )
 
 type googleAuthReq struct {
@@ -79,12 +79,16 @@ func (d *Deps) GoogleAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := d.upsertGoogleUser(r.Context(), profile)
+	basic, err := d.upsertGoogleUser(r.Context(), profile)
 	if err != nil {
 		d.internalError(w, r, err, "failed to provision account")
 		return
 	}
-
+	user, err := loadUser(r.Context(), d, basic.ID)
+	if err != nil {
+		d.internalError(w, r, err, "failed to load user after sign-in")
+		return
+	}
 	tok, err := d.Auth.Issue(user.ID, user.Email)
 	if err != nil {
 		d.internalError(w, r, err, "failed to issue token")
@@ -233,15 +237,13 @@ func (d *Deps) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var (
-		user         models.User
+		userID       string
+		userEmail    string
 		passwordHash *string
 	)
 	err := d.DB.QueryRow(r.Context(), `
-		SELECT id, email, name, phone, avatar_url, password_hash
-		FROM users WHERE email = $1
-	`, email).Scan(
-		&user.ID, &user.Email, &user.Name, &user.Phone, &user.AvatarURL, &passwordHash,
-	)
+		SELECT id, email, password_hash FROM users WHERE email = $1
+	`, email).Scan(&userID, &userEmail, &passwordHash)
 	if err != nil {
 		if isNoRows(err) {
 			writeError(w, http.StatusUnauthorized, "invalid email or password")
@@ -255,6 +257,11 @@ func (d *Deps) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	user, err := loadUser(r.Context(), d, userID)
+	if err != nil {
+		d.internalError(w, r, err, "failed to load user")
+		return
+	}
 	tok, err := d.Auth.Issue(user.ID, user.Email)
 	if err != nil {
 		d.internalError(w, r, err, "failed to issue token")
@@ -312,12 +319,20 @@ func (d *Deps) Me(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, user)
 }
 
+// loadUser hydrates the full User model — basic profile + subscription
+// state. Used by every endpoint that returns a user payload, so the SPA
+// always sees current plan/status.
 func loadUser(ctx context.Context, d *Deps, id string) (models.User, error) {
 	var user models.User
 	err := d.DB.QueryRow(ctx, `
-		SELECT id, email, name, phone, avatar_url
+		SELECT id, email, name, phone, avatar_url,
+		       subscription_status, subscription_plan, current_period_end, trial_end
 		FROM users WHERE id = $1
-	`, id).Scan(&user.ID, &user.Email, &user.Name, &user.Phone, &user.AvatarURL)
+	`, id).Scan(
+		&user.ID, &user.Email, &user.Name, &user.Phone, &user.AvatarURL,
+		&user.SubscriptionStatus, &user.SubscriptionPlan,
+		&user.CurrentPeriodEnd, &user.TrialEnd,
+	)
 	return user, err
 }
 

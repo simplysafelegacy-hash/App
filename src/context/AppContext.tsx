@@ -1,4 +1,4 @@
-import React, {
+import {
   createContext,
   useCallback,
   useContext,
@@ -8,13 +8,14 @@ import React, {
   ReactNode,
 } from "react";
 import {
-  Document,
   Notification,
+  SubscriptionPlan,
   User,
   Vault,
   VaultMember,
   VaultRole,
   VaultSummary,
+  Will,
 } from "@/lib/types";
 import { api } from "@/lib/api";
 import { permissionsForVault, type Permissions } from "@/lib/permissions";
@@ -33,17 +34,15 @@ interface AppContextType {
   loading: boolean;
 
   // Multi-vault state
-  vaults: VaultSummary[]; // every vault the user has access to
+  vaults: VaultSummary[];
   currentVaultId: string | null;
   currentVaultSummary: VaultSummary | null;
-  vault: Vault | null; // full data for current vault
+  vault: Vault | null;
   permissions: Permissions;
 
   notifications: Notification[];
 
-  // Auth — Google OAuth and email/password live side by side. Each
-  // returns { newUser } so the caller can route first-time accounts to
-  // the create-vault flow.
+  // Auth — Google OAuth and email/password live side by side.
   signInWithGoogle: (code: string) => Promise<{ newUser: boolean }>;
   signUpWithPassword: (data: {
     email: string;
@@ -67,27 +66,29 @@ interface AppContextType {
   }) => Promise<void>;
   releaseVault: (released: boolean) => Promise<void>;
   refreshVault: () => Promise<void>;
+  updateWill: (will: {
+    hasWill: boolean;
+    locationType?: string;
+    locationAddress?: string;
+    locationDescription?: string;
+  }) => Promise<void>;
 
-  // Documents (owner only for mutations)
-  addDocument: (
-    document: Omit<Document, "id" | "createdAt" | "lastUpdated" | "hasFile">,
-  ) => Promise<Document | null>;
-  updateDocument: (id: string, updates: Partial<Document>) => Promise<void>;
-  deleteDocument: (id: string) => Promise<void>;
-  downloadDocument: (id: string) => Promise<void>;
-
-  // Members (owner only)
+  // Members
   addMember: (m: {
     name: string;
     email: string;
     role: VaultRole;
-    documentIds?: string[];
   }) => Promise<VaultMember | null>;
   updateMember: (
     id: string,
-    updates: Partial<VaultMember> & { role?: VaultRole },
+    updates: Partial<Pick<VaultMember, "name" | "role">>,
   ) => Promise<void>;
   removeMember: (id: string) => Promise<void>;
+
+  // Billing — both methods redirect away to a Stripe-hosted page on
+  // success. They throw if the backend is misconfigured.
+  startCheckout: (plan: SubscriptionPlan) => Promise<void>;
+  openCustomerPortal: () => Promise<void>;
 
   markNotificationRead: (id: string) => void;
 }
@@ -140,8 +141,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // -- internal helpers --------------------------------------------------
-
   const loadVaults = useCallback(async (): Promise<VaultSummary[]> => {
     if (DEMO_MODE) {
       setVaults(mockVaultSummaries);
@@ -161,7 +160,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setVaults(list);
     const stored = api.getVaultId();
     const exists = stored && list.some((v) => v.id === stored);
-    const initial = exists ? stored : list[0]?.id ?? null;
+    const initial = exists ? stored : (list[0]?.id ?? null);
     if (initial) {
       api.setVaultId(initial);
       setCurrentVaultId(initial);
@@ -175,11 +174,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return list;
   }, []);
 
-  // -- auth -------------------------------------------------------------
-
-  // afterAuth runs the post-token bookkeeping shared by every sign-in
-  // path: hydrate the user, load their vaults, pull notifications, and
-  // report whether they need the create-vault flow.
+  // afterAuth runs the post-token bookkeeping shared by every sign-in path.
   const afterAuth = useCallback(
     async (res: { token: string; user: User }): Promise<{ newUser: boolean }> => {
       api.setToken(res.token);
@@ -220,7 +215,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setCurrentUser({ ...mockOwner, email: data.email, name: data.name });
         await loadVaults();
         setNotifications(mockNotifications);
-        // Brand-new password signups always start without a vault.
         return { newUser: true };
       }
       const res = await api.auth.register(data);
@@ -256,8 +250,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setNotifications([]);
   }, []);
 
-  // -- vault selection ---------------------------------------------------
-
   const selectVault = useCallback(async (id: string) => {
     api.setVaultId(id);
     setCurrentVaultId(id);
@@ -282,8 +274,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const v = await api.vault.get();
     setVault(v);
   }, [currentVaultId]);
-
-  // -- vault mutations ---------------------------------------------------
 
   const pushNotification = useCallback(
     (n: Omit<Notification, "id" | "timestamp" | "read">) => {
@@ -319,7 +309,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           emergencyContactName: data.emergencyContactName,
           emergencyContactPhone: data.emergencyContactPhone,
           releasedAt: null,
-          documents: [],
+          will: { hasWill: false, locationType: "", locationAddress: "", locationDescription: "" },
           members: [
             {
               id: `member-${Date.now()}`,
@@ -327,7 +317,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
               name: data.fullName,
               email: data.email,
               role: "owner",
-              documentIds: [],
             },
           ],
           createdAt: new Date().toISOString(),
@@ -386,105 +375,46 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [vault],
   );
 
-  // -- documents ---------------------------------------------------------
-
-  const addDocument = useCallback(
-    async (
-      doc: Omit<Document, "id" | "createdAt" | "lastUpdated" | "hasFile">,
-    ): Promise<Document | null> => {
-      if (!vault) return null;
-      let created: Document;
+  const updateWill = useCallback(
+    async (data: {
+      hasWill: boolean;
+      locationType?: string;
+      locationAddress?: string;
+      locationDescription?: string;
+    }) => {
+      if (!vault) return;
+      const next: Will = {
+        hasWill: data.hasWill,
+        locationType: (data.locationType ?? "") as Will["locationType"],
+        locationAddress: data.locationAddress ?? "",
+        locationDescription: data.locationDescription ?? "",
+        updatedAt: new Date().toISOString(),
+      };
       if (DEMO_MODE) {
-        created = {
-          ...doc,
-          id: `doc-${Date.now()}`,
-          hasFile: !!doc.fileName,
-          createdAt: new Date().toISOString(),
-          lastUpdated: new Date().toISOString(),
-        };
-      } else {
-        created = await api.documents.create({
-          type: doc.type,
-          name: doc.name,
-          fileName: doc.fileName,
-          locationType: doc.locationType,
-          address: doc.address,
-          description: doc.description,
-          memberIds: doc.memberIds,
+        setVault({ ...vault, will: next });
+        pushNotification({
+          type: "will_updated",
+          message: "Will details updated",
+          vaultId: vault.id,
         });
-      }
-      setVault({ ...vault, documents: [...vault.documents, created] });
-      pushNotification({
-        type: "document_added",
-        message: `${created.name} added to vault`,
-        vaultId: vault.id,
-      });
-      return created;
-    },
-    [vault, pushNotification],
-  );
-
-  const updateDocument = useCallback(
-    async (id: string, updates: Partial<Document>) => {
-      if (!vault) return;
-      const updated = DEMO_MODE
-        ? null
-        : await api.documents.update(id, updates);
-      setVault({
-        ...vault,
-        documents: vault.documents.map((d) =>
-          d.id === id
-            ? updated ?? {
-                ...d,
-                ...updates,
-                lastUpdated: new Date().toISOString(),
-              }
-            : d,
-        ),
-      });
-      pushNotification({
-        type: "document_updated",
-        message: "Document updated",
-        vaultId: vault.id,
-      });
-    },
-    [vault, pushNotification],
-  );
-
-  const deleteDocument = useCallback(
-    async (id: string) => {
-      if (!vault) return;
-      if (!DEMO_MODE) await api.documents.remove(id);
-      setVault({
-        ...vault,
-        documents: vault.documents.filter((d) => d.id !== id),
-      });
-    },
-    [vault],
-  );
-
-  const downloadDocument = useCallback(
-    async (id: string) => {
-      if (DEMO_MODE) {
-        // Demo: there's no actual file. Open a placeholder.
-        window.open("/placeholder.svg", "_blank");
         return;
       }
-      const res = await api.documents.download(id);
-      // Open in a new tab so the browser handles the download.
-      window.open(res.url, "_blank", "noopener");
+      const saved = await api.vault.updateWill(data);
+      setVault({ ...vault, will: saved });
+      pushNotification({
+        type: "will_updated",
+        message: "Will details updated",
+        vaultId: vault.id,
+      });
     },
-    [],
+    [vault, pushNotification],
   );
-
-  // -- members -----------------------------------------------------------
 
   const addMember = useCallback(
     async (m: {
       name: string;
       email: string;
       role: VaultRole;
-      documentIds?: string[];
     }): Promise<VaultMember | null> => {
       if (!vault) return null;
       const created: VaultMember = DEMO_MODE
@@ -494,7 +424,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
             name: m.name,
             email: m.email,
             role: m.role,
-            documentIds: m.documentIds ?? [],
           }
         : await api.members.create(m);
       setVault({ ...vault, members: [...vault.members, created] });
@@ -511,14 +440,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const updateMember = useCallback(
     async (
       id: string,
-      updates: Partial<VaultMember> & { role?: VaultRole },
+      updates: Partial<Pick<VaultMember, "name" | "role">>,
     ) => {
       if (!vault) return;
-      const updated = DEMO_MODE ? null : await api.members.update(id, updates);
+      const updated = DEMO_MODE
+        ? null
+        : await api.members.update(id, updates);
       setVault({
         ...vault,
         members: vault.members.map((m) =>
-          m.id === id ? updated ?? { ...m, ...updates } : m,
+          m.id === id ? (updated ?? { ...m, ...updates }) : m,
         ),
       });
     },
@@ -536,6 +467,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     },
     [vault],
   );
+
+  const startCheckout = useCallback(async (plan: SubscriptionPlan) => {
+    if (DEMO_MODE) {
+      window.alert(
+        `Demo mode: would start Stripe Checkout for the ${plan} plan.`,
+      );
+      return;
+    }
+    const { url } = await api.billing.checkout(plan);
+    window.location.assign(url);
+  }, []);
+
+  const openCustomerPortal = useCallback(async () => {
+    if (DEMO_MODE) {
+      window.alert("Demo mode: would open the Stripe Customer Portal.");
+      return;
+    }
+    const { url } = await api.billing.portal();
+    window.location.assign(url);
+  }, []);
 
   const markNotificationRead = useCallback((id: string) => {
     setNotifications((prev) =>
@@ -563,13 +514,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       createVault,
       releaseVault,
       refreshVault,
-      addDocument,
-      updateDocument,
-      deleteDocument,
-      downloadDocument,
+      updateWill,
       addMember,
       updateMember,
       removeMember,
+      startCheckout,
+      openCustomerPortal,
       markNotificationRead,
     }),
     [
@@ -590,13 +540,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       createVault,
       releaseVault,
       refreshVault,
-      addDocument,
-      updateDocument,
-      deleteDocument,
-      downloadDocument,
+      updateWill,
       addMember,
       updateMember,
       removeMember,
+      startCheckout,
+      openCustomerPortal,
       markNotificationRead,
     ],
   );

@@ -60,8 +60,8 @@ export default function Members() {
         <header className="mb-8">
           <h1 className="text-3xl md:text-4xl font-bold mb-2">People</h1>
           <p className="text-lg text-muted-foreground max-w-2xl">
-            Stewards can read and download documents now. Successors are sealed
-            out until you release the vault.
+            Stewards can see your will now. Successors are sealed out until
+            you release the vault.
           </p>
         </header>
 
@@ -128,9 +128,8 @@ export default function Members() {
 
         <Section
           title="Stewards"
-          description="Active access — may read and download granted documents."
+          description="Active access — can see the will and where it's kept."
           members={stewards}
-          totalDocs={vault.documents.length}
           onRemove={(id) => setConfirmRemove(id)}
         />
 
@@ -144,7 +143,6 @@ export default function Members() {
               : "Sealed until the vault is released."
           }
           members={successors}
-          totalDocs={vault.documents.length}
           onRemove={(id) => setConfirmRemove(id)}
         />
       </div>
@@ -193,13 +191,11 @@ function Section({
   title,
   description,
   members,
-  totalDocs,
   onRemove,
 }: {
   title: string;
   description: string;
   members: VaultMember[];
-  totalDocs: number;
   onRemove: (id: string) => void;
 }) {
   return (
@@ -219,10 +215,7 @@ function Section({
       ) : (
         <ul className="card-surface divide-y divide-border">
           {members.map((m) => (
-            <li
-              key={m.id}
-              className="flex items-center gap-4 px-5 py-4"
-            >
+            <li key={m.id} className="flex items-center gap-4 px-5 py-4">
               <span className="w-10 h-10 rounded-full bg-secondary text-foreground inline-flex items-center justify-center text-base font-semibold shrink-0">
                 {m.name.charAt(0).toUpperCase()}
               </span>
@@ -238,15 +231,6 @@ function Section({
                     Pending — will activate on signup
                   </p>
                 )}
-              </div>
-              <div className="hidden sm:block text-right shrink-0">
-                <p className="text-base text-foreground tnum">
-                  {m.documentIds.length}
-                  <span className="text-muted-foreground"> of {totalDocs}</span>
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  documents
-                </p>
               </div>
               <button
                 onClick={() => onRemove(m.id)}

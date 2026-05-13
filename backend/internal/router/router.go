@@ -9,8 +9,8 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 
-	"github.com/sealed/backend/internal/auth"
-	"github.com/sealed/backend/internal/handlers"
+	"github.com/simplysafelegacy/backend/internal/auth"
+	"github.com/simplysafelegacy/backend/internal/handlers"
 )
 
 func New(h *handlers.Deps, authSvc *auth.Service, allowedOrigins []string, logger *slog.Logger) http.Handler {
@@ -40,12 +40,12 @@ func New(h *handlers.Deps, authSvc *auth.Service, allowedOrigins []string, logge
 	})
 
 	r.Route("/api", func(r chi.Router) {
-		// Public auth endpoints. Email/password lives alongside Google;
-		// register rejects any email that already exists, login returns
-		// a generic error on any failure to avoid user enumeration.
+		// Public auth + Stripe webhook. The webhook is intentionally
+		// unauthenticated — the signature header proves authenticity.
 		r.Post("/auth/google", h.GoogleAuth)
 		r.Post("/auth/register", h.Register)
 		r.Post("/auth/login", h.Login)
+		r.Post("/billing/webhook", h.Webhook)
 
 		// Authenticated, no vault scope required.
 		r.Group(func(r chi.Router) {
@@ -53,9 +53,10 @@ func New(h *handlers.Deps, authSvc *auth.Service, allowedOrigins []string, logge
 
 			r.Get("/auth/me", h.Me)
 			r.Get("/me/vaults", h.ListMyVaults)
-
-			// Creating one's own vault doesn't need an existing vault scope.
 			r.Post("/vault", h.CreateVault)
+
+			r.Post("/billing/checkout", h.CreateCheckout)
+			r.Post("/billing/portal", h.CustomerPortal)
 		})
 
 		// Authenticated + scoped to a specific vault via X-Vault-Id.
@@ -65,14 +66,7 @@ func New(h *handlers.Deps, authSvc *auth.Service, allowedOrigins []string, logge
 
 			r.Get("/vault", h.GetVault)
 			r.Post("/vault/release", h.ReleaseVault)
-
-			r.Get("/documents", h.ListDocuments)
-			r.Post("/documents", h.CreateDocument)
-			r.Get("/documents/{id}", h.GetDocument)
-			r.Patch("/documents/{id}", h.UpdateDocument)
-			r.Delete("/documents/{id}", h.DeleteDocument)
-			r.Post("/documents/{id}/upload-url", h.PresignUpload)
-			r.Get("/documents/{id}/download", h.DownloadDocument)
+			r.Put("/vault/will", h.UpdateWill)
 
 			r.Get("/members", h.ListMembers)
 			r.Post("/members", h.CreateMember)

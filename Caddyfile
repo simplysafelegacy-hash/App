@@ -1,0 +1,37 @@
+# Caddyfile for Simply Safe Legacy.
+#
+# Caddy reads CADDY_DOMAIN from the environment (set in .env) and serves
+# the SPA + reverse-proxies /api to the Go backend with automatic HTTPS
+# via Let's Encrypt.
+#
+# DNS prerequisite: an A record for {$CADDY_DOMAIN} must point at the VM's
+# public IP before Caddy can complete the ACME challenge.
+
+{$CADDY_DOMAIN} {
+    encode zstd gzip
+
+    # API + Stripe webhook → Go backend.
+    handle /api/* {
+        reverse_proxy backend:8080
+    }
+
+    # Everything else → the static SPA.
+    handle {
+        reverse_proxy frontend:80
+    }
+
+    # Modest security baseline. The frontend doesn't need referrer leaks
+    # to third parties; the SPA never embeds anyone else.
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        -Server
+    }
+
+    log {
+        output stdout
+        format console
+        level INFO
+    }
+}

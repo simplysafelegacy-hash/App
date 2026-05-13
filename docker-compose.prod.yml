@@ -1,0 +1,44 @@
+# docker-compose.prod.yml — production overlay.
+#
+# Layered on top of docker-compose.yml by the deploy script:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# What it changes:
+#   - Adds Caddy on :80 / :443 with auto-HTTPS (needs a real domain in DNS).
+#   - Removes the direct port mappings on backend/frontend so only Caddy is
+#     reachable from the internet.
+#   - Removes Postgres' direct port (still reachable from inside the docker
+#     network for the backend).
+
+services:
+  postgres:
+    ports: []
+
+  backend:
+    ports: []
+    environment:
+      APP_ENV: production
+
+  frontend:
+    ports: []
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - frontend
+      - backend
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      CADDY_DOMAIN: ${CADDY_DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

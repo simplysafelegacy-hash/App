@@ -89,7 +89,7 @@ func (s *Service) Issue(userID, email string) (string, error) {
 		RegisteredClaims: jwt.RegisteredClaims{
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(s.expiry)),
-			Issuer:    "sealed",
+			Issuer:    "simplysafelegacy",
 			Subject:   userID,
 		},
 	}
