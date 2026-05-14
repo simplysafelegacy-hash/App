@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Check, ChevronDown, Plus } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { roleLabel } from "@/lib/permissions";
 import type { VaultRole } from "@/lib/types";
@@ -10,7 +11,8 @@ import type { VaultRole } from "@/lib/types";
  * AppContext, which re-fetches the vault per the new X-Vault-Id scope.
  */
 export function VaultSwitcher() {
-  const { vaults, currentVaultId, currentVaultSummary, selectVault } = useApp();
+  const { vaults, currentVaultId, currentVaultSummary, selectVault, userOwnsVault } = useApp();
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -26,7 +28,10 @@ export function VaultSwitcher() {
 
   if (vaults.length === 0) return null;
 
-  if (vaults.length === 1 && currentVaultSummary) {
+  // With exactly one vault and no need for a "create yours" CTA in the
+  // dropdown, render a flat label rather than a dropdown to keep the
+  // header quiet.
+  if (vaults.length === 1 && currentVaultSummary && userOwnsVault) {
     return (
       <div className="hidden md:flex items-center gap-2 px-3">
         <span className="text-base text-foreground truncate max-w-[180px]">
@@ -106,6 +111,19 @@ export function VaultSwitcher() {
               );
             })}
           </ul>
+          {!userOwnsVault && (
+            <button
+              type="button"
+              onClick={() => {
+                navigate("/create-vault");
+                setOpen(false);
+              }}
+              className="w-full text-left px-5 py-3 border-t border-border bg-muted/40 hover:bg-muted transition-colors flex items-center gap-2 text-base text-foreground"
+            >
+              <Plus size={16} strokeWidth={1.75} />
+              Create your own vault
+            </button>
+          )}
         </div>
       )}
     </div>

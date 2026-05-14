@@ -45,22 +45,25 @@ const plans: {
     cta: "Choose Family",
     flagship: true,
   },
-  {
-    id: "safekeeping",
-    name: "Safekeeping",
-    price: "50",
-    cadence: "per month · add-on",
-    line: "When the original document should be in our care.",
-    features: [
-      "Climate-controlled physical vault",
-      "Registered location of record",
-      "Priority retrieval service",
-      "Annual inventory",
-      "Insurance coverage",
-    ],
-    cta: "Add Safekeeping",
-    flagship: false,
-  },
+  // Safekeeping is intentionally hidden pre-launch — we don't yet have
+  // physical vault operations stood up. The Stripe price + backend plan
+  // code remain wired so re-enabling is just uncommenting this block.
+  // {
+  //   id: "safekeeping",
+  //   name: "Safekeeping",
+  //   price: "50",
+  //   cadence: "per month · add-on",
+  //   line: "When the original document should be in our care.",
+  //   features: [
+  //     "Climate-controlled physical vault",
+  //     "Registered location of record",
+  //     "Priority retrieval service",
+  //     "Annual inventory",
+  //     "Insurance coverage",
+  //   ],
+  //   cta: "Add Safekeeping",
+  //   flagship: false,
+  // },
 ];
 
 export default function Plans() {
@@ -111,7 +114,7 @@ export default function Plans() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 max-w-3xl">
           {plans.map((p) => {
             const isCurrent = currentUser?.subscriptionPlan === p.id;
             return (

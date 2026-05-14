@@ -39,6 +39,10 @@ interface AppContextType {
   currentVaultSummary: VaultSummary | null;
   vault: Vault | null;
   permissions: Permissions;
+  // True if any vault in `vaults` has role === "owner" — i.e. the user
+  // has their own vault. False for users who are only stewards or
+  // successors on someone else's vault.
+  userOwnsVault: boolean;
 
   notifications: Notification[];
 
@@ -111,6 +115,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const permissions = useMemo(
     () => permissionsForVault(vault, currentVaultSummary),
     [vault, currentVaultSummary],
+  );
+  const userOwnsVault = useMemo(
+    () => vaults.some((v) => v.role === "owner"),
+    [vaults],
   );
 
   // Restore session on mount.
@@ -505,6 +513,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       currentVaultSummary,
       vault,
       permissions,
+      userOwnsVault,
       notifications,
       signInWithGoogle,
       signUpWithPassword,
@@ -531,6 +540,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       currentVaultSummary,
       vault,
       permissions,
+      userOwnsVault,
       notifications,
       signInWithGoogle,
       signUpWithPassword,

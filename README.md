@@ -50,15 +50,22 @@ to work.
 
 ### 2. Boot the stack
 
+For local docker-compose runs, this repo uses **`.env.dev`** by default
+(it's gitignored). Copy from the template and fill in real values:
+
 ```sh
-cp .env.example .env
+cp .env.example .env.dev
 # Paste Google client id / secret. Set JWT_SECRET to a 32+ char value
 # (openssl rand -hex 32). Stripe values can stay as test placeholders
 # for now — checkout calls will return "plan not configured" errors
 # until you wire real prices in (see Stripe section below).
 
-docker compose up --build
+# docker compose reads .env by default — point it at .env.dev:
+docker compose --env-file .env.dev up --build
 ```
+
+If you'd rather have docker-compose autoload it, symlink:
+`ln -s .env.dev .env`.
 
 When healthy:
 
@@ -191,19 +198,34 @@ The deploy is **rsync from your laptop → Docker compose on the VM**, with
 Caddy on the VM handling TLS via Let's Encrypt. No GitHub, no CI, no
 container registry.
 
+### Two targets, two env files
+
+The scripts require **either `--dev` or `--prod`** — there is no default.
+
+| Flag      | Domain                       | Env file used    |
+| --------- | ---------------------------- | ---------------- |
+| `--dev`   | `dev.simplysafelegacy.com`   | `.env.dev`       |
+| `--prod`  | `app.simplysafelegacy.com`   | `.env.prod`      |
+
+The matching env file is scp'd to the VM as `/opt/simplysafelegacy/.env`
+on every run, so changes to `.env.dev` / `.env.prod` on your laptop
+propagate on the next `update.sh`. The deploy script also pins
+`CADDY_DOMAIN`, `PUBLIC_APP_URL`, and `ALLOWED_ORIGINS` to the chosen
+domain on the remote `.env` as a safety net.
+
 ### Prerequisites (one-time)
 
 - An Ubuntu 22.04 or 24.04 VM with a public IP.
-- DNS A records for `app.simplysafelegacy.com` (and optionally
-  `dev.simplysafelegacy.com`) pointing at that IP, **propagated**
+- DNS A records for `app.simplysafelegacy.com` and/or
+  `dev.simplysafelegacy.com` pointing at that IP, **propagated**
   before the first deploy. Without DNS, Caddy can't pass the ACME
   HTTP-01 challenge.
 - The VM's firewall must allow inbound 22 (SSH), 80 (ACME + redirect),
   and 443 (HTTPS). Cloud security group, host-level `ufw`, or both.
 - An SSH key on your laptop authorized as `ubuntu` on the VM. The
   deploy scripts default to `~/.ssh/lgc`.
-- A filled-in `.env` in this repo (Google + Stripe values, see above).
-  `deploy.sh` scp's it to the VM on the first run.
+- `.env.dev` for dev deploys, `.env.prod` for prod — see "Local
+  development" above and the Stripe section. Both are gitignored.
 
 ### Configure the deploy
 
@@ -220,18 +242,17 @@ cp deploy/.env.deploy.example deploy/.env.deploy
 ### First deploy
 
 ```sh
-./deploy/deploy.sh           # → app.simplysafelegacy.com
-# or
-./deploy/deploy.sh --dev     # → dev.simplysafelegacy.com
+./deploy/deploy.sh --dev      # → dev.simplysafelegacy.com  (.env.dev)
+./deploy/deploy.sh --prod     # → app.simplysafelegacy.com  (.env.prod)
 ```
 
 This:
 
 1. SSH's to the VM, installs Docker + the compose plugin if missing.
 2. rsyncs the repo to `/opt/simplysafelegacy` (excluding
-   `node_modules`, `dist`, `.git`, `.env`, etc.).
-3. scp's your local `.env` to the VM as a one-time bootstrap.
-4. Pins `CADDY_DOMAIN`, `PUBLIC_APP_URL`, and `ALLOWED_ORIGINS` in the
+   `node_modules`, `dist`, `.git`, all `.env*` files, etc.).
+3. scp's the chosen env file to the VM as `.env`.
+4. Pins `CADDY_DOMAIN`, `PUBLIC_APP_URL`, and `ALLOWED_ORIGINS` on the
    remote `.env` to the chosen domain.
 5. Brings the stack up with the production overlay
    (`docker-compose.yml` + `docker-compose.prod.yml`).
@@ -243,14 +264,14 @@ it a few seconds.
 ### Subsequent updates (after code changes)
 
 ```sh
-./deploy/update.sh           # → app.simplysafelegacy.com
-./deploy/update.sh --dev     # → dev.simplysafelegacy.com
+./deploy/update.sh --dev
+./deploy/update.sh --prod
 ```
 
-Rsyncs only the deltas, rebuilds whichever Docker images changed, and
-restarts the affected services. Postgres + Caddy ACME state survive.
-Tails ~10s of backend logs after restart so you can spot a startup
-failure without an extra command.
+Rsyncs only the deltas, re-syncs the matching env file, rebuilds
+whichever Docker images changed, and restarts affected services.
+Postgres + Caddy ACME state survive. Tails ~10s of backend logs after
+restart so you can spot a startup failure.
 
 ### Tail logs
 
@@ -345,9 +366,14 @@ planned MFA path — no provider needed.
 
 - **`JWT_SECRET` must be at least 32 characters.** Generate with
   `openssl rand -hex 32`.
-- `PUBLIC_APP_URL`, `ALLOWED_ORIGINS`, and `CADDY_DOMAIN` are set
-  automatically by `deploy.sh` / `update.sh` to match the deploy
-  target — don't set them manually on the VM.
+- **`ALLOWED_ORIGINS`** is the CORS allowlist on the Go backend. The
+  SPA's API calls only succeed when its `Origin` is in this list.
+  `deploy.sh` / `update.sh` overwrite this on the remote `.env` to
+  match the deploy target, so the values in `.env.dev` / `.env.prod`
+  are only relevant for local docker-compose runs (`localhost:8000`
+  + `localhost:5173`).
+- `PUBLIC_APP_URL` and `CADDY_DOMAIN` are likewise pinned to the
+  deploy target on every run — don't edit them on the VM by hand.
 - Switch Stripe keys from `sk_test_` / `pk_test_` to live, and create
   a separate webhook endpoint in live mode (the signing secret is
   per-endpoint).

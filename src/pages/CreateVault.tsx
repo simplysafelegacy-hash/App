@@ -1,12 +1,23 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Layout } from "@/components/layout/Layout";
 import { useApp } from "@/context/AppContext";
 
 export default function CreateVault() {
-  const { createVault, currentUser } = useApp();
+  const { createVault, currentUser, userOwnsVault, vaults, selectVault } = useApp();
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
+
+  // A user can only own one vault (UNIQUE owner_id at the DB layer).
+  // If they already do, bounce them to the dashboard rather than risk
+  // them overwriting their existing vault's metadata via this form.
+  useEffect(() => {
+    if (userOwnsVault) {
+      const owned = vaults.find((v) => v.role === "owner");
+      if (owned) selectVault(owned.id);
+      navigate("/dashboard", { replace: true });
+    }
+  }, [userOwnsVault, vaults, selectVault, navigate]);
 
   const [formData, setFormData] = useState({
     fullName: currentUser?.name || "",

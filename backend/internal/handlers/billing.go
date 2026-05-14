@@ -152,10 +152,22 @@ func (d *Deps) Webhook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "could not read body")
 		return
 	}
-	event, err := webhook.ConstructEvent(body, r.Header.Get("Stripe-Signature"), d.Stripe.WebhookSecret)
+	// IgnoreAPIVersionMismatch: stripe-go pins to one API version per
+	// release (basil at the time of writing) and rejects events whose
+	// API version differs. Our Stripe account is on a newer default
+	// (dahlia), so without this flag every event fails before we even
+	// look at the type. We only read a stable subset of fields — type,
+	// id, and a handful of well-known fields on Subscription / Session /
+	// Invoice — so the skew is acceptable. Revisit if upgrading stripe-go.
+	event, err := webhook.ConstructEventWithOptions(
+		body,
+		r.Header.Get("Stripe-Signature"),
+		d.Stripe.WebhookSecret,
+		webhook.ConstructEventOptions{IgnoreAPIVersionMismatch: true},
+	)
 	if err != nil {
-		d.Logger.Warn("stripe webhook signature mismatch", "err", err)
-		writeError(w, http.StatusBadRequest, "signature verification failed")
+		d.Logger.Warn("stripe webhook rejected", "err", err)
+		writeError(w, http.StatusBadRequest, "could not verify webhook")
 		return
 	}
 

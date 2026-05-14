@@ -1,43 +1,58 @@
 #!/usr/bin/env bash
 # deploy.sh — first-time deployment to a fresh Ubuntu VM.
 #
-# What this does:
-#   1. Loads deploy/.env.deploy for DEPLOY_HOST / DEPLOY_PATH / CADDY_DOMAIN.
-#   2. Installs Docker + the compose plugin on the VM (idempotent).
-#   3. rsyncs the project to $DEPLOY_PATH.
-#   4. If the remote /opt/simplysafelegacy/.env doesn't exist, copies your
-#      local .env over so the stack has Stripe/Google secrets.
-#   5. Starts the stack with the production overlay (adds Caddy, drops
-#      direct port mappings).
+# Required: one of --dev or --prod. Each maps to its own env file
+# (.env.dev or .env.prod) and its own Caddy domain (CADDY_DOMAIN_DEV
+# vs CADDY_DOMAIN). There is no default — picking the wrong target
+# would be a footgun.
 #
-# Re-run safe — idempotent end-to-end. After the first run, prefer
-# deploy/update.sh for incremental code pushes; it skips the Docker
-# install step.
+# What it does:
+#   1. Loads deploy/.env.deploy (SSH target + Caddy domains).
+#   2. scp's the chosen .env.<dev|prod> to the remote as .env.
+#   3. Installs Docker + compose plugin on the VM (idempotent).
+#   4. rsyncs the project to $DEPLOY_PATH.
+#   5. Rewrites CADDY_DOMAIN / PUBLIC_APP_URL / ALLOWED_ORIGINS on the
+#      remote .env to match the chosen target (safety net in case the
+#      env file disagrees).
+#   6. Brings up the stack with the production overlay.
+#
+# Re-run safe end-to-end. After the first run, use deploy/update.sh.
 
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 ROOT="$(pwd)"
 
-DEV_MODE=0
+usage() {
+    cat <<USAGE
+Usage: deploy/deploy.sh --dev | --prod
+
+  --dev    Deploy to CADDY_DOMAIN_DEV (e.g. dev.simplysafelegacy.com)
+           using .env.dev for application secrets.
+  --prod   Deploy to CADDY_DOMAIN (e.g. app.simplysafelegacy.com)
+           using .env.prod for application secrets.
+USAGE
+}
+
+TARGET=""
 for arg in "$@"; do
     case "$arg" in
-        --dev) DEV_MODE=1 ;;
-        -h|--help)
-            cat <<USAGE
-Usage: deploy/deploy.sh [--dev]
-
-  --dev    Deploy to CADDY_DOMAIN_DEV instead of CADDY_DOMAIN
-           (e.g. dev.simplysafelegacy.com instead of app.simplysafelegacy.com).
-USAGE
-            exit 0
-            ;;
+        --dev)  TARGET="dev" ;;
+        --prod) TARGET="prod" ;;
+        -h|--help) usage; exit 0 ;;
         *)
-            echo "unknown argument: $arg (try --help)" >&2
+            echo "unknown argument: $arg" >&2
+            usage >&2
             exit 1
             ;;
     esac
 done
+
+if [[ -z "$TARGET" ]]; then
+    echo "ERROR: pick --dev or --prod." >&2
+    usage >&2
+    exit 1
+fi
 
 if [[ ! -f deploy/.env.deploy ]]; then
     echo "deploy/.env.deploy not found — copy deploy/.env.deploy.example and fill in." >&2
@@ -48,15 +63,24 @@ source deploy/.env.deploy
 
 : "${DEPLOY_HOST:?DEPLOY_HOST is required in deploy/.env.deploy}"
 : "${DEPLOY_PATH:?DEPLOY_PATH is required in deploy/.env.deploy}"
-: "${CADDY_DOMAIN:?CADDY_DOMAIN is required in deploy/.env.deploy}"
 
-if (( DEV_MODE )); then
-    : "${CADDY_DOMAIN_DEV:?CADDY_DOMAIN_DEV is required when --dev is used}"
-    CADDY_DOMAIN="$CADDY_DOMAIN_DEV"
-    echo "→ Dev mode: deploying to $CADDY_DOMAIN"
+# Pick the target-specific values.
+if [[ "$TARGET" == "dev" ]]; then
+    : "${CADDY_DOMAIN_DEV:?CADDY_DOMAIN_DEV required in deploy/.env.deploy for --dev}"
+    CHOSEN_DOMAIN="$CADDY_DOMAIN_DEV"
+    ENV_FILE="$ROOT/.env.dev"
 else
-    echo "→ Deploying to $CADDY_DOMAIN"
+    : "${CADDY_DOMAIN:?CADDY_DOMAIN required in deploy/.env.deploy for --prod}"
+    CHOSEN_DOMAIN="$CADDY_DOMAIN"
+    ENV_FILE="$ROOT/.env.prod"
 fi
+
+if [[ ! -f "$ENV_FILE" ]]; then
+    echo "ERROR: $ENV_FILE not found — create it before deploying $TARGET." >&2
+    exit 1
+fi
+
+echo "→ Target: $TARGET ($CHOSEN_DOMAIN) using $(basename "$ENV_FILE")"
 
 SSH_OPTS=()
 RSYNC_SSH="ssh"
@@ -113,37 +137,29 @@ rsync -az --delete \
     --exclude 'node_modules' \
     --exclude 'dist' \
     --exclude '.env' \
+    --exclude '.env.dev' \
+    --exclude '.env.prod' \
     --exclude 'deploy/.env.deploy' \
     --exclude 'supabase' \
     --exclude '.DS_Store' \
     -e "$RSYNC_SSH" \
     "$ROOT/" "$DEPLOY_HOST:$DEPLOY_PATH/"
 
-echo "→ Checking remote .env …"
-if remote "test -f '$DEPLOY_PATH/.env'"; then
-    echo "  remote .env present — leaving it alone."
-else
-    if [[ -f "$ROOT/.env" ]]; then
-        echo "  no remote .env yet — copying your local .env over (one-time)."
-        scp "${SSH_OPTS[@]}" "$ROOT/.env" "$DEPLOY_HOST:$DEPLOY_PATH/.env"
-    else
-        echo "  WARNING: no .env locally and none on the VM — backend will fail" >&2
-        echo "  to boot until you place one at $DEPLOY_PATH/.env." >&2
-    fi
-fi
+echo "→ Pushing $(basename "$ENV_FILE") → remote .env …"
+scp "${SSH_OPTS[@]}" "$ENV_FILE" "$DEPLOY_HOST:$DEPLOY_PATH/.env"
 
-echo "→ Setting CADDY_DOMAIN in remote .env …"
+echo "→ Pinning CADDY_DOMAIN / PUBLIC_APP_URL / ALLOWED_ORIGINS to $CHOSEN_DOMAIN …"
 remote "grep -q '^CADDY_DOMAIN=' '$DEPLOY_PATH/.env' \
-    && sed -i 's|^CADDY_DOMAIN=.*|CADDY_DOMAIN=$CADDY_DOMAIN|' '$DEPLOY_PATH/.env' \
-    || echo 'CADDY_DOMAIN=$CADDY_DOMAIN' >> '$DEPLOY_PATH/.env'"
+    && sed -i 's|^CADDY_DOMAIN=.*|CADDY_DOMAIN=$CHOSEN_DOMAIN|' '$DEPLOY_PATH/.env' \
+    || echo 'CADDY_DOMAIN=$CHOSEN_DOMAIN' >> '$DEPLOY_PATH/.env'"
 remote "grep -q '^PUBLIC_APP_URL=' '$DEPLOY_PATH/.env' \
-    && sed -i 's|^PUBLIC_APP_URL=.*|PUBLIC_APP_URL=https://$CADDY_DOMAIN|' '$DEPLOY_PATH/.env' \
-    || echo 'PUBLIC_APP_URL=https://$CADDY_DOMAIN' >> '$DEPLOY_PATH/.env'"
+    && sed -i 's|^PUBLIC_APP_URL=.*|PUBLIC_APP_URL=https://$CHOSEN_DOMAIN|' '$DEPLOY_PATH/.env' \
+    || echo 'PUBLIC_APP_URL=https://$CHOSEN_DOMAIN' >> '$DEPLOY_PATH/.env'"
 remote "grep -q '^ALLOWED_ORIGINS=' '$DEPLOY_PATH/.env' \
-    && sed -i 's|^ALLOWED_ORIGINS=.*|ALLOWED_ORIGINS=https://$CADDY_DOMAIN|' '$DEPLOY_PATH/.env' \
-    || echo 'ALLOWED_ORIGINS=https://$CADDY_DOMAIN' >> '$DEPLOY_PATH/.env'"
+    && sed -i 's|^ALLOWED_ORIGINS=.*|ALLOWED_ORIGINS=https://$CHOSEN_DOMAIN|' '$DEPLOY_PATH/.env' \
+    || echo 'ALLOWED_ORIGINS=https://$CHOSEN_DOMAIN' >> '$DEPLOY_PATH/.env'"
 
-echo "→ Building and starting the stack on $DEPLOY_HOST …"
+echo "→ Building and starting the stack …"
 remote "cd '$DEPLOY_PATH' && docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build"
 
 echo "→ Waiting for backend health …"
@@ -156,14 +172,14 @@ done; echo '  backend did not come up healthy in time — check logs.'; exit 1" 
 
 cat <<DONE
 
-Deployed.
+Deployed ($TARGET).
 
-  https://$CADDY_DOMAIN
+  https://$CHOSEN_DOMAIN
 
-Caddy will fetch a Let's Encrypt cert on first request — make sure DNS for
-$CADDY_DOMAIN points at the VM. Tail logs with:
+Caddy fetches the Let's Encrypt cert on the first HTTPS request. DNS for
+$CHOSEN_DOMAIN must already point at the VM. Tail logs:
 
   ssh $DEPLOY_HOST 'cd $DEPLOY_PATH && docker compose logs -f --tail=100'
 
-For incremental updates, use deploy/update.sh.
+For incremental updates: deploy/update.sh --$TARGET
 DONE

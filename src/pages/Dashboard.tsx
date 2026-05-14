@@ -17,6 +17,7 @@ const WILL_LOCATIONS: { value: WillLocationType; label: string }[] = [
 export default function Dashboard() {
   const {
     vault,
+    vaults,
     isAuthenticated,
     currentUser,
     permissions,
@@ -24,15 +25,22 @@ export default function Dashboard() {
     releaseVault,
     loading,
     refreshVault,
+    userOwnsVault,
   } = useApp();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
   useEffect(() => {
     if (loading) return;
-    if (!isAuthenticated) navigate("/login");
-    else if (!vault && permissions.isOwner) navigate("/create-vault");
-  }, [isAuthenticated, vault, permissions.isOwner, loading, navigate]);
+    if (!isAuthenticated) {
+      navigate("/login");
+      return;
+    }
+    // Truly empty account → send to create-vault. Users who only have
+    // *invited* vaults (no owned one) stay here and see the
+    // "create your own vault" banner instead.
+    if (!vault && vaults.length === 0) navigate("/create-vault");
+  }, [isAuthenticated, vault, vaults.length, loading, navigate]);
 
   // After Stripe Checkout returns the user lands on /dashboard?subscription=success.
   // Refresh the vault & user so the new subscription state shows up.
@@ -91,6 +99,8 @@ export default function Dashboard() {
           )}
         </header>
 
+        {!userOwnsVault && <CreateOwnVaultBanner />}
+
         {permissions.isOwner && currentUser && (
           <SubscriptionStrip user={currentUser} />
         )}
@@ -119,6 +129,30 @@ export default function Dashboard() {
         )}
       </div>
     </Layout>
+  );
+}
+
+function CreateOwnVaultBanner() {
+  const navigate = useNavigate();
+  return (
+    <div className="card-surface p-4 md:p-5 mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-secondary/40">
+      <div>
+        <p className="text-base font-medium text-foreground">
+          You don't have your own vault yet
+        </p>
+        <p className="text-sm text-muted-foreground">
+          Create one to record your will and choose who can see it.
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={() => navigate("/create-vault")}
+        className="btn-primary !min-h-[40px] !text-sm shrink-0"
+      >
+        <Plus size={16} strokeWidth={1.75} />
+        Create your vault
+      </button>
+    </div>
   );
 }
 
