@@ -35,7 +35,7 @@ export function SealMark({
         </text>
       </svg>
       {withWord && (
-        <span className="text-lg font-semibold tracking-tight text-foreground">
+        <span className="text-base font-semibold text-foreground">
           Simply Safe Legacy
         </span>
       )}

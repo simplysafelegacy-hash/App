@@ -47,7 +47,16 @@ func main() {
 
 	authSvc := auth.New(cfg.JWTSecret, cfg.JWTExpiry)
 	googleSvc := auth.NewGoogleService(cfg.GoogleClientID, cfg.GoogleClientSecret)
-	deps := handlers.New(pool, authSvc, googleSvc, handlers.StripeConfigFrom(cfg), logger, cfg.Env == "development")
+	deps := handlers.New(
+		pool,
+		authSvc,
+		googleSvc,
+		handlers.StripeConfigFrom(cfg),
+		handlers.StorageConfigFrom(cfg),
+		handlers.SupportConfigFrom(cfg),
+		logger,
+		cfg.Env == "development",
+	)
 	h := router.New(deps, authSvc, cfg.AllowedOrigins, logger)
 
 	srv := &http.Server{

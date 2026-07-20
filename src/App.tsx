@@ -11,6 +11,8 @@ import CreateVault from "./pages/CreateVault";
 import Dashboard from "./pages/Dashboard";
 import Members from "./pages/Members";
 import Plans from "./pages/Plans";
+import Settings from "./pages/Settings";
+import AdminReleaseRequests from "./pages/AdminReleaseRequests";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -31,6 +33,8 @@ const App = () => (
             <Route path="/members" element={<Members />} />
             <Route path="/viewers" element={<Members />} />
             <Route path="/plans" element={<Plans />} />
+            <Route path="/settings" element={<Settings />} />
+            <Route path="/admin/release-requests" element={<AdminReleaseRequests />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

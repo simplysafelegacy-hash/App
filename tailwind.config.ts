@@ -13,7 +13,7 @@ export default {
       center: true,
       padding: "1.5rem",
       screens: {
-        "2xl": "1280px",
+        "2xl": "1180px",
       },
     },
     extend: {
@@ -69,15 +69,15 @@ export default {
         ],
       },
       fontSize: {
-        xs: ["13px", "1.5"],
-        sm: ["14px", "1.5"],
-        base: ["17px", "1.55"],
-        lg: ["19px", "1.55"],
-        xl: ["22px", "1.4"],
-        "2xl": ["28px", "1.25"],
-        "3xl": ["34px", "1.2"],
-        "4xl": ["42px", "1.15"],
-        "5xl": ["52px", "1.05"],
+        xs: ["12px", "1.45"],
+        sm: ["13px", "1.5"],
+        base: ["15px", "1.5"],
+        lg: ["17px", "1.5"],
+        xl: ["20px", "1.35"],
+        "2xl": ["24px", "1.25"],
+        "3xl": ["30px", "1.15"],
+        "4xl": ["38px", "1.1"],
+        "5xl": ["48px", "1.05"],
       },
       keyframes: {
         "accordion-down": {

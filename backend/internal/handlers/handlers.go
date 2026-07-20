@@ -17,12 +17,14 @@ import (
 // Deps carries everything the handlers need. The zero value is not usable;
 // construct via New.
 type Deps struct {
-	DB     *pgxpool.Pool
-	Auth   *auth.Service
-	Google *auth.GoogleService
-	Stripe StripeConfig
-	Logger *slog.Logger
-	Dev    bool
+	DB      *pgxpool.Pool
+	Auth    *auth.Service
+	Google  *auth.GoogleService
+	Stripe  StripeConfig
+	Storage StorageConfig
+	Support SupportConfig
+	Logger  *slog.Logger
+	Dev     bool
 }
 
 // StripeConfig is the subset of config the billing handler needs. Carved
@@ -36,6 +38,34 @@ type StripeConfig struct {
 	PriceFamily      string
 	PriceSafekeeping string
 	TrialDays        int
+}
+
+type StorageConfig struct {
+	Bucket string
+}
+
+type SupportConfig struct {
+	EmailTo      string
+	SMTPHost     string
+	SMTPPort     string
+	SMTPUsername string
+	SMTPPassword string
+	SMTPFrom     string
+}
+
+func StorageConfigFrom(c *config.Config) StorageConfig {
+	return StorageConfig{Bucket: c.GCSBucket}
+}
+
+func SupportConfigFrom(c *config.Config) SupportConfig {
+	return SupportConfig{
+		EmailTo:      c.SupportEmailTo,
+		SMTPHost:     c.SMTPHost,
+		SMTPPort:     c.SMTPPort,
+		SMTPUsername: c.SMTPUsername,
+		SMTPPassword: c.SMTPPassword,
+		SMTPFrom:     c.SMTPFrom,
+	}
 }
 
 func StripeConfigFrom(c *config.Config) StripeConfig {
@@ -56,13 +86,15 @@ func New(
 	authSvc *auth.Service,
 	google *auth.GoogleService,
 	stripe StripeConfig,
+	storage StorageConfig,
+	support SupportConfig,
 	logger *slog.Logger,
 	dev bool,
 ) *Deps {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Deps{DB: db, Auth: authSvc, Google: google, Stripe: stripe, Logger: logger, Dev: dev}
+	return &Deps{DB: db, Auth: authSvc, Google: google, Stripe: stripe, Storage: storage, Support: support, Logger: logger, Dev: dev}
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

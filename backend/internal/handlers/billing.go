@@ -19,6 +19,15 @@ import (
 	"github.com/simplysafelegacy/backend/internal/models"
 )
 
+func (d *Deps) ListBillingPlans(w http.ResponseWriter, r *http.Request) {
+	plans, err := d.listPlanLimits(r.Context(), true)
+	if err != nil {
+		d.internalError(w, r, err, "failed to list plans")
+		return
+	}
+	writeJSON(w, http.StatusOK, plans)
+}
+
 // CreateCheckout starts a Stripe Checkout session for the requested plan
 // and returns the redirect URL. The frontend does
 // `window.location = data.url` from the response.

@@ -78,6 +78,34 @@ When healthy:
 The frontend container is built with `VITE_DEMO_MODE=false` so it calls
 the real backend through nginx's `/api` proxy.
 
+### Google Cloud Storage uploads
+
+Release proof files are uploaded to Google Cloud Storage using application
+default credentials. Set `GCS_BUCKET` on the backend. Objects are written
+under a vault-scoped prefix:
+
+```text
+{vault_id}/release-requests/{release_request_id}/{file_name}
+```
+
+### Support tickets
+
+The settings page includes an authenticated support-ticket form. It sends
+email from the backend using SMTP:
+
+```text
+SUPPORT_EMAIL_TO=simplysafelegacy@gmail.com
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_USERNAME=...
+SMTP_PASSWORD=...
+SMTP_FROM=support@simplysafelegacy.com
+```
+
+In development, if `SMTP_HOST` is not set, the backend logs the ticket instead
+of sending email. In production, missing SMTP config returns an error so ticket
+delivery does not fail silently.
+
 ### Frontend-only (no backend)
 
 ```sh
@@ -88,6 +116,19 @@ npm run dev
 Vite on http://localhost:5173 in **demo mode** — the AppContext seeds
 itself with mock vault data. Set `VITE_DEMO_MODE=false` to hit a
 running backend instead.
+
+### Backend in Docker, Frontend Local
+
+Use this when you want Postgres + the Go API in Docker while Vite runs on
+your machine:
+
+```sh
+docker compose --env-file .env.dev -f docker-compose.backend.yml up --build
+VITE_DEMO_MODE=false npm run dev
+```
+
+The local Vite server proxies `/api` to `http://localhost:8080`, so the
+frontend can keep using same-origin API calls during development.
 
 ### Backend-only
 
@@ -111,8 +152,8 @@ In the [Stripe Dashboard → Products](https://dashboard.stripe.com/test/product
 
 | Product       | Price | Billing  |
 | ------------- | ----- | -------- |
-| Individual    | $15   | Monthly  |
-| Family        | $25   | Monthly  |
+| Individual    | $8    | Monthly  |
+| Family        | $20   | Monthly  |
 | Safekeeping   | $50   | Monthly  |
 
 Each product, once saved, exposes a `price_...` ID. Paste the three IDs

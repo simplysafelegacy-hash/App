@@ -325,14 +325,23 @@ func (d *Deps) Me(w http.ResponseWriter, r *http.Request) {
 func loadUser(ctx context.Context, d *Deps, id string) (models.User, error) {
 	var user models.User
 	err := d.DB.QueryRow(ctx, `
-		SELECT id, email, name, phone, avatar_url,
+		SELECT id, email, name, phone, avatar_url, is_admin,
 		       subscription_status, subscription_plan, current_period_end, trial_end
 		FROM users WHERE id = $1
 	`, id).Scan(
-		&user.ID, &user.Email, &user.Name, &user.Phone, &user.AvatarURL,
+		&user.ID, &user.Email, &user.Name, &user.Phone, &user.AvatarURL, &user.IsAdmin,
 		&user.SubscriptionStatus, &user.SubscriptionPlan,
 		&user.CurrentPeriodEnd, &user.TrialEnd,
 	)
+	if err != nil {
+		return user, err
+	}
+	limits, err := d.effectivePlanLimits(ctx, id)
+	if err != nil {
+		return user, err
+	}
+	user.PlanLimits = &limits
+	user.SubscriptionPlan = &limits.PlanCode
 	return user, err
 }
 

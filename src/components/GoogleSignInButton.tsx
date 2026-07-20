@@ -15,6 +15,65 @@ export function GoogleSignInButton({
   label?: string;
   fullWidth?: boolean;
 }) {
+  if (DEMO_MODE) {
+    return (
+      <DemoGoogleSignInButton
+        onSuccess={onSuccess}
+        label={label}
+        fullWidth={fullWidth}
+      />
+    );
+  }
+  return (
+    <RealGoogleSignInButton
+      onSuccess={onSuccess}
+      onError={onError}
+      label={label}
+      fullWidth={fullWidth}
+    />
+  );
+}
+
+function DemoGoogleSignInButton({
+  onSuccess,
+  label,
+  fullWidth,
+}: {
+  onSuccess: (result: { newUser: boolean }) => void;
+  label: string;
+  fullWidth: boolean;
+}) {
+  const { signInWithGoogle } = useApp();
+  const [pending, setPending] = useState(false);
+
+  const onClick = () => {
+    setPending(true);
+    signInWithGoogle("demo")
+      .then((r) => onSuccess(r))
+      .finally(() => setPending(false));
+  };
+
+  return (
+    <SignInButtonShell
+      pending={pending}
+      label={label}
+      fullWidth={fullWidth}
+      onClick={onClick}
+    />
+  );
+}
+
+function RealGoogleSignInButton({
+  onSuccess,
+  onError,
+  label,
+  fullWidth,
+}: {
+  onSuccess: (result: { newUser: boolean }) => void;
+  onError?: (message: string) => void;
+  label: string;
+  fullWidth: boolean;
+}) {
   const { signInWithGoogle } = useApp();
   const [pending, setPending] = useState(false);
 
@@ -35,16 +94,30 @@ export function GoogleSignInButton({
   });
 
   const onClick = () => {
-    if (DEMO_MODE) {
-      setPending(true);
-      signInWithGoogle("demo")
-        .then((r) => onSuccess(r))
-        .finally(() => setPending(false));
-      return;
-    }
     login();
   };
 
+  return (
+    <SignInButtonShell
+      pending={pending}
+      label={label}
+      fullWidth={fullWidth}
+      onClick={onClick}
+    />
+  );
+}
+
+function SignInButtonShell({
+  pending,
+  label,
+  fullWidth,
+  onClick,
+}: {
+  pending: boolean;
+  label: string;
+  fullWidth: boolean;
+  onClick: () => void;
+}) {
   return (
     <button
       type="button"

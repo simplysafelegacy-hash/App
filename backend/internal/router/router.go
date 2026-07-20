@@ -45,6 +45,7 @@ func New(h *handlers.Deps, authSvc *auth.Service, allowedOrigins []string, logge
 		r.Post("/auth/google", h.GoogleAuth)
 		r.Post("/auth/register", h.Register)
 		r.Post("/auth/login", h.Login)
+		r.Get("/billing/plans", h.ListBillingPlans)
 		r.Post("/billing/webhook", h.Webhook)
 
 		// Authenticated, no vault scope required.
@@ -57,6 +58,18 @@ func New(h *handlers.Deps, authSvc *auth.Service, allowedOrigins []string, logge
 
 			r.Post("/billing/checkout", h.CreateCheckout)
 			r.Post("/billing/portal", h.CustomerPortal)
+			r.Post("/support/tickets", h.CreateSupportTicket)
+		})
+
+		// Platform admin operations.
+		r.Group(func(r chi.Router) {
+			r.Use(authSvc.Middleware)
+			r.Use(h.AdminMiddleware)
+
+			r.Get("/admin/release-requests", h.AdminListReleaseRequests)
+			r.Post("/admin/release-requests/{id}/approve", h.AdminApproveReleaseRequest)
+			r.Post("/admin/release-requests/{id}/reject", h.AdminRejectReleaseRequest)
+			r.Get("/admin/release-request-files/{id}/download", h.AdminDownloadReleaseRequestFile)
 		})
 
 		// Authenticated + scoped to a specific vault via X-Vault-Id.
@@ -66,7 +79,11 @@ func New(h *handlers.Deps, authSvc *auth.Service, allowedOrigins []string, logge
 
 			r.Get("/vault", h.GetVault)
 			r.Post("/vault/release", h.ReleaseVault)
+			r.Delete("/vault/document-releases/{type}", h.ResealDocumentRelease)
 			r.Put("/vault/will", h.UpdateWill)
+			r.Put("/vault/documents/{type}", h.UpdateDocument)
+			r.Get("/vault/release-requests", h.ListReleaseRequests)
+			r.Post("/vault/release-requests", h.CreateReleaseRequest)
 
 			r.Get("/members", h.ListMembers)
 			r.Post("/members", h.CreateMember)

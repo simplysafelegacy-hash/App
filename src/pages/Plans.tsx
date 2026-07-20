@@ -1,82 +1,75 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Layout } from "@/components/layout/Layout";
 import { useApp } from "@/context/AppContext";
-import type { SubscriptionPlan } from "@/lib/types";
-import { ApiError } from "@/lib/api";
+import type { PlanLimits, SubscriptionPlan } from "@/lib/types";
+import { api, ApiError } from "@/lib/api";
 import { Check } from "lucide-react";
 
-const plans: {
-  id: SubscriptionPlan;
-  name: string;
-  price: string;
-  cadence: string;
-  line: string;
-  features: string[];
-  cta: string;
-  flagship: boolean;
-}[] = [
+const DEMO_MODE = (import.meta.env.VITE_DEMO_MODE ?? "true") === "true";
+
+const fallbackPlans: PlanLimits[] = [
   {
-    id: "individual",
+    planCode: "free",
+    name: "Free",
+    priceCents: 0,
+    cadence: "per month",
+    displayOrder: 10,
+    maxAuthorizedPeople: 0,
+    allowWill: true,
+    allowPowerOfAttorney: false,
+    allowHealthCareDirective: false,
+    active: true,
+  },
+  {
+    planCode: "individual",
     name: "Individual",
-    price: "15",
+    priceCents: 800,
     cadence: "per month",
-    line: "For one person putting their own affairs in order.",
-    features: [
-      "One vault owner",
-      "Record your will and where it's kept",
-      "Two authorized viewers",
-    ],
-    cta: "Choose Individual",
-    flagship: false,
+    displayOrder: 20,
+    maxAuthorizedPeople: 4,
+    allowWill: true,
+    allowPowerOfAttorney: true,
+    allowHealthCareDirective: true,
+    active: true,
   },
   {
-    id: "family",
+    planCode: "family",
     name: "Family",
-    price: "25",
+    priceCents: 2000,
     cadence: "per month",
-    line: "For families keeping several lives in careful order.",
-    features: [
-      "One vault owner",
-      "Record your will and where it's kept",
-      "Up to five authorized viewers",
-      "Priority support",
-    ],
-    cta: "Choose Family",
-    flagship: true,
+    displayOrder: 30,
+    maxAuthorizedPeople: 15,
+    allowWill: true,
+    allowPowerOfAttorney: true,
+    allowHealthCareDirective: true,
+    active: true,
   },
-  // Safekeeping is intentionally hidden pre-launch — we don't yet have
-  // physical vault operations stood up. The Stripe price + backend plan
-  // code remain wired so re-enabling is just uncommenting this block.
-  // {
-  //   id: "safekeeping",
-  //   name: "Safekeeping",
-  //   price: "50",
-  //   cadence: "per month · add-on",
-  //   line: "When the original document should be in our care.",
-  //   features: [
-  //     "Climate-controlled physical vault",
-  //     "Registered location of record",
-  //     "Priority retrieval service",
-  //     "Annual inventory",
-  //     "Insurance coverage",
-  //   ],
-  //   cta: "Add Safekeeping",
-  //   flagship: false,
-  // },
 ];
 
 export default function Plans() {
   const { startCheckout, currentUser } = useApp();
   const [searchParams] = useSearchParams();
   const [pendingPlan, setPendingPlan] = useState<SubscriptionPlan | null>(null);
+  const [plans, setPlans] = useState<PlanLimits[]>(fallbackPlans);
   const [error, setError] = useState<string | null>(
     searchParams.get("subscription") === "canceled"
       ? "Checkout was canceled. You can try again any time."
       : null,
   );
 
+  useEffect(() => {
+    if (DEMO_MODE) return;
+    api.billing
+      .plans()
+      .then((loaded) => {
+        if (loaded.length) setPlans(loaded);
+      })
+      .catch(() => {});
+  }, []);
+
   const onChoose = async (plan: SubscriptionPlan) => {
+    if (plan === "free") return;
     setError(null);
     setPendingPlan(plan);
     try {
@@ -100,10 +93,10 @@ export default function Plans() {
 
   return (
     <Layout>
-      <div className="container py-10 md:py-16">
+      <div className="container py-8 md:py-12">
         <header className="max-w-2xl mb-10">
-          <h1 className="text-3xl md:text-4xl font-bold mb-3">Plans</h1>
-          <p className="text-lg text-muted-foreground">
+          <h1 className="text-2xl md:text-3xl font-semibold mb-3">Plans</h1>
+          <p className="text-base text-muted-foreground">
             A single monthly rate. Cancel any time, no penalty.
           </p>
         </header>
@@ -114,19 +107,22 @@ export default function Plans() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 max-w-3xl">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 max-w-5xl">
           {plans.map((p) => {
-            const isCurrent = currentUser?.subscriptionPlan === p.id;
+            const isCurrent =
+              (currentUser?.planLimits?.planCode ?? currentUser?.subscriptionPlan ?? "free") ===
+              p.planCode;
+            const flagship = p.planCode === "family";
             return (
               <article
-                key={p.id}
-                className={`card-surface p-6 md:p-8 flex flex-col ${
-                  p.flagship ? "ring-2 ring-primary" : ""
+                key={p.planCode}
+                className={`card-surface p-5 md:p-6 flex flex-col ${
+                  flagship ? "ring-2 ring-primary" : ""
                 }`}
               >
                 <div className="flex items-baseline justify-between mb-4">
-                  <h3 className="text-2xl font-bold">{p.name}</h3>
-                  {p.flagship && !isCurrent && (
+                  <h3 className="text-xl font-semibold">{p.name}</h3>
+                  {flagship && !isCurrent && (
                     <span className="text-xs font-medium bg-primary text-primary-foreground rounded px-2 py-0.5">
                       Most chosen
                     </span>
@@ -141,17 +137,19 @@ export default function Plans() {
                   <span className="text-base text-muted-foreground align-top mr-0.5">
                     $
                   </span>
-                  <span className="text-4xl font-bold text-foreground tnum">
-                    {p.price}
+                  <span className="text-3xl font-semibold text-foreground tnum">
+                    {(p.priceCents / 100).toLocaleString("en-US", {
+                      maximumFractionDigits: 0,
+                    })}
                   </span>
                   <span className="ml-2 text-base text-muted-foreground">
                     {p.cadence}
                   </span>
                 </div>
-                <p className="text-muted-foreground mb-6">{p.line}</p>
+                <p className="text-sm text-muted-foreground mb-6">{planLine(p)}</p>
                 <ul className="space-y-2.5 mb-8 flex-1">
-                  {p.features.map((f) => (
-                    <li key={f} className="flex items-start gap-2 text-base">
+                  {planFeatures(p).map((f) => (
+                    <li key={f} className="flex items-start gap-2 text-sm">
                       <Check
                         size={18}
                         strokeWidth={2}
@@ -163,18 +161,25 @@ export default function Plans() {
                 </ul>
                 <button
                   type="button"
-                  onClick={() => onChoose(p.id)}
-                  disabled={!isLoggedIn || pendingPlan !== null || isCurrent}
-                  className={p.flagship ? "btn-primary" : "btn-secondary"}
+                  onClick={() => onChoose(p.planCode)}
+                  disabled={
+                    p.planCode === "free" ||
+                    !isLoggedIn ||
+                    pendingPlan !== null ||
+                    isCurrent
+                  }
+                  className={flagship ? "btn-primary" : "btn-secondary"}
                   title={
                     !isLoggedIn ? "Sign in or create an account first" : undefined
                   }
                 >
-                  {pendingPlan === p.id
+                  {pendingPlan === p.planCode
                     ? "Redirecting…"
                     : isCurrent
                       ? "Current plan"
-                      : p.cta}
+                      : p.planCode === "free"
+                        ? "Included"
+                        : `Choose ${p.name}`}
                 </button>
                 {!isLoggedIn && (
                   <p className="text-xs text-muted-foreground mt-2 text-center">
@@ -186,7 +191,7 @@ export default function Plans() {
           })}
         </div>
 
-        <div className="mt-16 pt-10 border-t border-border grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div className="mt-14 pt-8 border-t border-border grid grid-cols-1 md:grid-cols-3 gap-7">
           {[
             {
               q: "What if I stop paying?",
@@ -202,12 +207,35 @@ export default function Plans() {
             },
           ].map((faq) => (
             <div key={faq.q}>
-              <h4 className="text-lg font-semibold mb-2">{faq.q}</h4>
-              <p className="text-muted-foreground leading-relaxed">{faq.a}</p>
+              <h4 className="text-base font-semibold mb-2">{faq.q}</h4>
+              <p className="text-sm text-muted-foreground leading-relaxed">{faq.a}</p>
             </div>
           ))}
         </div>
       </div>
     </Layout>
   );
+}
+
+function planLine(plan: PlanLimits) {
+  if (plan.planCode === "free") {
+    return "For recording your own will before inviting anyone else.";
+  }
+  if (plan.planCode === "family") {
+    return "For families keeping several lives in careful order.";
+  }
+  return "For one person who needs all core documents and a small circle of access.";
+}
+
+function planFeatures(plan: PlanLimits) {
+  const features = ["One vault owner"];
+  if (plan.allowWill) features.push("Record your will and where it's kept");
+  if (plan.allowPowerOfAttorney) features.push("Record power of attorney");
+  if (plan.allowHealthCareDirective) features.push("Record health care directive");
+  if (plan.maxAuthorizedPeople > 0) {
+    features.push(`Up to ${plan.maxAuthorizedPeople} authorized people`);
+  } else {
+    features.push("No authorized people");
+  }
+  return features;
 }

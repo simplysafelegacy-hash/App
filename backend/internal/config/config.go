@@ -29,10 +29,22 @@ type Config struct {
 	StripePriceSafekeeping string
 	StripeTrialDays        int
 
+	// Google Cloud Storage — release proof uploads are stored under
+	// {vault_id}/release-requests/{request_id}/...
+	GCSBucket string
+
 	// PublicAppURL is the externally-reachable origin for the SPA, used
 	// by Stripe Checkout success/cancel URLs and any other absolute links
 	// the backend builds. e.g. https://dev.simplysafelegacy.com
 	PublicAppURL string
+
+	// Support email — used by the in-app support ticket form.
+	SupportEmailTo string
+	SMTPHost       string
+	SMTPPort       string
+	SMTPUsername   string
+	SMTPPassword   string
+	SMTPFrom       string
 }
 
 func Load() (*Config, error) {
@@ -53,8 +65,16 @@ func Load() (*Config, error) {
 		StripePriceFamily:      os.Getenv("STRIPE_PRICE_FAMILY"),
 		StripePriceSafekeeping: os.Getenv("STRIPE_PRICE_SAFEKEEPING"),
 		StripeTrialDays:        getenvInt("STRIPE_TRIAL_DAYS", 14),
+		GCSBucket:              os.Getenv("GCS_BUCKET"),
 
 		PublicAppURL: getenv("PUBLIC_APP_URL", "http://localhost:8000"),
+
+		SupportEmailTo: getenv("SUPPORT_EMAIL_TO", "simplysafelegacy@gmail.com"),
+		SMTPHost:       os.Getenv("SMTP_HOST"),
+		SMTPPort:       getenv("SMTP_PORT", "587"),
+		SMTPUsername:   os.Getenv("SMTP_USERNAME"),
+		SMTPPassword:   os.Getenv("SMTP_PASSWORD"),
+		SMTPFrom:       os.Getenv("SMTP_FROM"),
 	}
 
 	if c.DatabaseURL == "" {

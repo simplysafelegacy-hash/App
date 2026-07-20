@@ -40,17 +40,17 @@ export default function CreateVault() {
 
   return (
     <Layout showFooter={false}>
-      <div className="container py-10 md:py-14 max-w-2xl">
+      <div className="container py-8 md:py-12 max-w-2xl">
         <header className="mb-10">
-          <h1 className="text-3xl md:text-4xl font-bold text-foreground mb-3">
+          <h1 className="text-2xl md:text-3xl font-semibold text-foreground mb-3">
             Set up your vault
           </h1>
-          <p className="text-lg text-muted-foreground">
+          <p className="text-base text-muted-foreground">
             Your own details, and the person we should contact in an emergency.
           </p>
         </header>
 
-        <form onSubmit={onSubmit} className="card-surface p-6 md:p-8 space-y-10">
+        <form onSubmit={onSubmit} className="card-surface p-5 md:p-6 space-y-8">
           <Section title="Your details">
             <Field
               label="Full name"
@@ -132,7 +132,7 @@ function Section({
 }) {
   return (
     <div>
-      <h2 className="text-xl font-semibold mb-1">{title}</h2>
+      <h2 className="text-lg font-semibold mb-1">{title}</h2>
       {hint && <p className="text-base text-muted-foreground mb-5">{hint}</p>}
       <div className="space-y-4 mt-4">{children}</div>
     </div>

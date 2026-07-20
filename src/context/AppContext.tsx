@@ -9,9 +9,14 @@ import {
 } from "react";
 import {
   Notification,
+  AccessTiming,
+  DocumentType,
+  MemberPermission,
+  ReleaseRequest,
   SubscriptionPlan,
   User,
   Vault,
+  VaultDocument,
   VaultMember,
   VaultRole,
   VaultSummary,
@@ -69,6 +74,7 @@ interface AppContextType {
     emergencyContactPhone: string;
   }) => Promise<void>;
   releaseVault: (released: boolean) => Promise<void>;
+  resealDocument: (type: DocumentType) => Promise<void>;
   refreshVault: () => Promise<void>;
   updateWill: (will: {
     hasWill: boolean;
@@ -76,16 +82,34 @@ interface AppContextType {
     locationAddress?: string;
     locationDescription?: string;
   }) => Promise<void>;
+  updateDocument: (
+    type: DocumentType,
+    document: {
+      hasDocument: boolean;
+      locationType?: string;
+      locationAddress?: string;
+      locationDescription?: string;
+    },
+  ) => Promise<void>;
+  submitReleaseRequest: (data: {
+    documentType: DocumentType;
+    releaseReason: "death" | "incapacitated";
+    note?: string;
+    files: File[];
+  }) => Promise<ReleaseRequest | null>;
 
   // Members
   addMember: (m: {
     name: string;
     email: string;
     role: VaultRole;
+    dateOfBirth?: string;
+    accessTiming?: AccessTiming;
+    permissions?: MemberPermission[];
   }) => Promise<VaultMember | null>;
   updateMember: (
     id: string,
-    updates: Partial<Pick<VaultMember, "name" | "role">>,
+    updates: Partial<Pick<VaultMember, "name" | "role" | "permissions">>,
   ) => Promise<void>;
   removeMember: (id: string) => Promise<void>;
 
@@ -318,6 +342,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           emergencyContactPhone: data.emergencyContactPhone,
           releasedAt: null,
           will: { hasWill: false, locationType: "", locationAddress: "", locationDescription: "" },
+          documents: emptyDocuments(),
           members: [
             {
               id: `member-${Date.now()}`,
@@ -368,7 +393,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (DEMO_MODE) {
         setVault({ ...vault, releasedAt });
         setVaults((prev) =>
-          prev.map((s) => (s.id === vault.id ? { ...s, releasedAt } : s)),
+          prev.map((s) =>
+            s.id === vault.id
+              ? {
+                  ...s,
+                  releasedAt,
+                  releasedDocuments: released ? s.releasedDocuments : [],
+                }
+              : s,
+          ),
         );
         return;
       }
@@ -376,7 +409,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setVault({ ...vault, releasedAt: res.releasedAt });
       setVaults((prev) =>
         prev.map((s) =>
-          s.id === vault.id ? { ...s, releasedAt: res.releasedAt } : s,
+          s.id === vault.id
+            ? {
+                ...s,
+                releasedAt: res.releasedAt,
+                releasedDocuments: released
+                  ? s.releasedDocuments
+                  : res.releasedDocuments ?? [],
+              }
+            : s,
+        ),
+      );
+    },
+    [vault],
+  );
+
+  const resealDocument = useCallback(
+    async (type: DocumentType) => {
+      if (!vault) return;
+      if (!DEMO_MODE) await api.vault.resealDocument(type);
+      setVaults((prev) =>
+        prev.map((s) =>
+          s.id === vault.id
+            ? {
+                ...s,
+                releasedDocuments: (s.releasedDocuments ?? []).filter(
+                  (documentType) => documentType !== type,
+                ),
+              }
+            : s,
         ),
       );
     },
@@ -418,11 +479,79 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [vault, pushNotification],
   );
 
+  const updateDocument = useCallback(
+    async (
+      type: DocumentType,
+      data: {
+        hasDocument: boolean;
+        locationType?: string;
+        locationAddress?: string;
+        locationDescription?: string;
+      },
+    ) => {
+      if (!vault) return;
+      const next: VaultDocument = {
+        type,
+        hasDocument: data.hasDocument,
+        locationType: (data.locationType ?? "") as VaultDocument["locationType"],
+        locationAddress: data.locationAddress ?? "",
+        locationDescription: data.locationDescription ?? "",
+        updatedAt: new Date().toISOString(),
+      };
+      if (DEMO_MODE) {
+        setVault({
+          ...vault,
+          will:
+            type === "will"
+              ? {
+                  hasWill: next.hasDocument,
+                  locationType: next.locationType,
+                  locationAddress: next.locationAddress,
+                  locationDescription: next.locationDescription,
+                  updatedAt: next.updatedAt,
+                }
+              : vault.will,
+          documents: upsertDocument(vault.documents, next),
+        });
+        pushNotification({
+          type: "document_updated",
+          message: "Document details updated",
+          vaultId: vault.id,
+        });
+        return;
+      }
+      const saved = await api.vault.updateDocument(type, data);
+      setVault({
+        ...vault,
+        will:
+          type === "will"
+            ? {
+                hasWill: saved.hasDocument,
+                locationType: saved.locationType,
+                locationAddress: saved.locationAddress,
+                locationDescription: saved.locationDescription,
+                updatedAt: saved.updatedAt,
+              }
+            : vault.will,
+        documents: upsertDocument(vault.documents, saved),
+      });
+      pushNotification({
+        type: "document_updated",
+        message: "Document details updated",
+        vaultId: vault.id,
+      });
+    },
+    [vault, pushNotification],
+  );
+
   const addMember = useCallback(
     async (m: {
       name: string;
       email: string;
       role: VaultRole;
+      dateOfBirth?: string;
+      accessTiming?: AccessTiming;
+      permissions?: MemberPermission[];
     }): Promise<VaultMember | null> => {
       if (!vault) return null;
       const created: VaultMember = DEMO_MODE
@@ -432,12 +561,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
             name: m.name,
             email: m.email,
             role: m.role,
+            dateOfBirth: m.dateOfBirth ?? "",
+            accessTiming: m.accessTiming ?? defaultAccessTiming(m.role),
+            permissions: m.permissions ?? defaultPermissionsForRole(m.role, m.accessTiming),
           }
         : await api.members.create(m);
       setVault({ ...vault, members: [...vault.members, created] });
       pushNotification({
         type: "member_added",
-        message: `${created.name} added as ${created.role}`,
+        message: `${created.name} added to the vault`,
         vaultId: vault.id,
       });
       return created;
@@ -448,7 +580,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const updateMember = useCallback(
     async (
       id: string,
-      updates: Partial<Pick<VaultMember, "name" | "role">>,
+      updates: Partial<Pick<VaultMember, "name" | "role" | "permissions">>,
     ) => {
       if (!vault) return;
       const updated = DEMO_MODE
@@ -460,6 +592,38 @@ export function AppProvider({ children }: { children: ReactNode }) {
           m.id === id ? (updated ?? { ...m, ...updates }) : m,
         ),
       });
+    },
+    [vault],
+  );
+
+  const submitReleaseRequest = useCallback(
+    async (data: {
+      documentType: DocumentType;
+      releaseReason: "death" | "incapacitated";
+      note?: string;
+      files: File[];
+    }): Promise<ReleaseRequest | null> => {
+      if (!vault) return null;
+      if (DEMO_MODE) {
+        return {
+          id: `release-${Date.now()}`,
+          vaultId: vault.id,
+          requesterId: "",
+          documentType: data.documentType,
+          releaseReason: data.releaseReason,
+          status: "pending",
+          note: data.note ?? "",
+          files: data.files.map((file, index) => ({
+            id: `release-file-${Date.now()}-${index}`,
+            fileName: file.name,
+            contentType: file.type,
+            fileSize: file.size,
+            gcsObject: `${vault.id}/release-requests/demo/${file.name}`,
+          })),
+          createdAt: new Date().toISOString(),
+        };
+      }
+      return api.releaseRequests.create(data);
     },
     [vault],
   );
@@ -522,8 +686,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       selectVault,
       createVault,
       releaseVault,
+      resealDocument,
       refreshVault,
       updateWill,
+      updateDocument,
+      submitReleaseRequest,
       addMember,
       updateMember,
       removeMember,
@@ -549,8 +716,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       selectVault,
       createVault,
       releaseVault,
+      resealDocument,
       refreshVault,
       updateWill,
+      updateDocument,
+      submitReleaseRequest,
       addMember,
       updateMember,
       removeMember,
@@ -561,6 +731,59 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
+}
+
+const documentTypes: DocumentType[] = [
+  "will",
+  "power_of_attorney",
+  "health_care_directive",
+];
+
+function emptyDocuments(): VaultDocument[] {
+  return documentTypes.map((type) => ({
+    type,
+    hasDocument: false,
+    locationType: "",
+    locationAddress: "",
+    locationDescription: "",
+  }));
+}
+
+function upsertDocument(
+  documents: VaultDocument[] | undefined,
+  next: VaultDocument,
+): VaultDocument[] {
+  const existing = documents?.length ? documents : emptyDocuments();
+  const found = existing.some((d) => d.type === next.type);
+  if (!found) return [...existing, next];
+  return existing.map((d) => (d.type === next.type ? next : d));
+}
+
+function defaultAccessTiming(role: VaultRole): AccessTiming {
+  if (role === "successor") return "after_death";
+  if (role === "poa_agent" || role === "health_care_proxy") return "incapacitated";
+  return "now";
+}
+
+function defaultPermissionsForRole(
+  role: VaultRole,
+  timing?: AccessTiming,
+): MemberPermission[] {
+  if (role === "owner") return [];
+  const documentType: DocumentType =
+    role === "poa_agent"
+      ? "power_of_attorney"
+      : role === "health_care_proxy"
+        ? "health_care_directive"
+        : "will";
+  return [
+    {
+      documentType,
+      permissionRole: role,
+      accessTiming: timing ?? defaultAccessTiming(role),
+      hidden: false,
+    },
+  ];
 }
 
 export function useApp() {

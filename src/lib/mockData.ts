@@ -11,9 +11,22 @@ export const mockOwner: User = {
   name: "Jane Mitchell",
   email: "jane.mitchell@email.com",
   phone: "(555) 123-4567",
+  isAdmin: true,
   subscriptionStatus: "active",
   subscriptionPlan: "family",
   currentPeriodEnd: "2027-03-01T00:00:00Z",
+  planLimits: {
+    planCode: "family",
+    name: "Family",
+    priceCents: 2000,
+    cadence: "per month",
+    displayOrder: 30,
+    maxAuthorizedPeople: 15,
+    allowWill: true,
+    allowPowerOfAttorney: true,
+    allowHealthCareDirective: true,
+    active: true,
+  },
 };
 
 const janeOwnVaultId = "vault-jane";
@@ -34,6 +47,16 @@ const stewardSon: VaultMember = {
   name: "Michael Mitchell",
   email: "michael.mitchell@email.com",
   role: "steward",
+  dateOfBirth: "1991-08-12",
+  accessTiming: "now",
+  permissions: [
+    {
+      documentType: "will",
+      permissionRole: "steward",
+      accessTiming: "now",
+      hidden: false,
+    },
+  ],
 };
 
 const successorDaughter: VaultMember = {
@@ -42,6 +65,16 @@ const successorDaughter: VaultMember = {
   name: "Anna Mitchell",
   email: "anna.mitchell@email.com",
   role: "successor",
+  dateOfBirth: "1994-03-05",
+  accessTiming: "after_death",
+  permissions: [
+    {
+      documentType: "will",
+      permissionRole: "successor",
+      accessTiming: "after_death",
+      hidden: false,
+    },
+  ],
 };
 
 export const mockVault: Vault = {
@@ -61,6 +94,32 @@ export const mockVault: Vault = {
     locationDescription: "Top shelf of the black fireproof safe",
     updatedAt: "2026-01-15T00:00:00Z",
   },
+  documents: [
+    {
+      type: "will",
+      hasDocument: true,
+      locationType: "home_safe",
+      locationAddress: "14 Oak Ridge Drive",
+      locationDescription: "Top shelf of the black fireproof safe",
+      updatedAt: "2026-01-15T00:00:00Z",
+    },
+    {
+      type: "power_of_attorney",
+      hasDocument: true,
+      locationType: "attorney_office",
+      locationAddress: "Reed & Kane, Esq.",
+      locationDescription: "Signed original in Jane Mitchell estate folder",
+      updatedAt: "2026-02-02T00:00:00Z",
+    },
+    {
+      type: "health_care_directive",
+      hasDocument: true,
+      locationType: "home_safe",
+      locationAddress: "14 Oak Ridge Drive",
+      locationDescription: "Blue folder labeled health directive",
+      updatedAt: "2026-02-02T00:00:00Z",
+    },
+  ],
   members: [janeOwnerMember, stewardSon, successorDaughter],
   createdAt: "2026-01-01T00:00:00Z",
 };
@@ -82,6 +141,16 @@ const fathersVault: Vault = {
     locationDescription: "Filed under R. Mitchell, drawer two",
     updatedAt: "2025-11-04T00:00:00Z",
   },
+  documents: [
+    {
+      type: "will",
+      hasDocument: true,
+      locationType: "attorney_office",
+      locationAddress: "Reed & Kane, Esq.",
+      locationDescription: "Filed under R. Mitchell, drawer two",
+      updatedAt: "2025-11-04T00:00:00Z",
+    },
+  ],
   members: [
     {
       id: "member-robert-owner",
@@ -96,6 +165,16 @@ const fathersVault: Vault = {
       name: "Jane Mitchell",
       email: "jane.mitchell@email.com",
       role: "steward",
+      dateOfBirth: "1989-04-18",
+      accessTiming: "now",
+      permissions: [
+        {
+          documentType: "will",
+          permissionRole: "steward",
+          accessTiming: "now",
+          hidden: false,
+        },
+      ],
     },
   ],
   createdAt: "2025-09-12T00:00:00Z",
@@ -112,6 +191,7 @@ const sealedVault: Vault = {
   emergencyContactPhone: "",
   releasedAt: null,
   will: { hasWill: false, locationType: "", locationAddress: "", locationDescription: "" },
+  documents: [],
   members: [],
   createdAt: "2025-06-30T00:00:00Z",
 };
@@ -129,6 +209,7 @@ export const mockVaultSummaries: VaultSummary[] = [
     ownerName: mockVault.ownerName,
     ownerEmail: mockVault.ownerEmail,
     role: "owner",
+    accessTiming: "now",
     releasedAt: null,
     createdAt: mockVault.createdAt,
   },
@@ -138,6 +219,7 @@ export const mockVaultSummaries: VaultSummary[] = [
     ownerName: fathersVault.ownerName,
     ownerEmail: fathersVault.ownerEmail,
     role: "steward",
+    accessTiming: "now",
     releasedAt: null,
     createdAt: fathersVault.createdAt,
   },
@@ -147,6 +229,7 @@ export const mockVaultSummaries: VaultSummary[] = [
     ownerName: sealedVault.ownerName,
     ownerEmail: sealedVault.ownerEmail,
     role: "successor",
+    accessTiming: "after_death",
     releasedAt: null,
     createdAt: sealedVault.createdAt,
   },

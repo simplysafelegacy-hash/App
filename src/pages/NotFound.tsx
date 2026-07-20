@@ -12,10 +12,10 @@ export default function NotFound() {
     <Layout showFooter={false}>
       <div className="container py-24 md:py-32 text-center max-w-xl mx-auto">
         <p className="text-sm font-medium text-muted-foreground mb-3">404</p>
-        <h1 className="text-4xl md:text-5xl font-bold text-foreground mb-4">
+        <h1 className="text-2xl md:text-3xl font-semibold text-foreground mb-4">
           Page not found
         </h1>
-        <p className="text-lg text-muted-foreground mb-10">
+        <p className="text-base text-muted-foreground mb-10">
           The address you've followed doesn't match anything in our records.
         </p>
         <div className="flex flex-col sm:flex-row gap-3 justify-center">

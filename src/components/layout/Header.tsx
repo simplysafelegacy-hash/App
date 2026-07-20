@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useApp } from "@/context/AppContext";
 import { SealMark } from "@/components/SealMark";
-import { VaultSwitcher } from "@/components/VaultSwitcher";
-import { Bell, ChevronDown, LogOut, Menu, User as UserIcon, X } from "lucide-react";
+import { VaultSwitcher, vaultAccessLabel, vaultDisplayName } from "@/components/VaultSwitcher";
+import { Bell, Check, ChevronDown, LogOut, Menu, Settings, User as UserIcon, X } from "lucide-react";
 
 export function Header() {
   const {
@@ -15,9 +15,11 @@ export function Header() {
     permissions,
   } = useApp();
   const authedLinks = [
-    { to: "/dashboard", label: "Vault", show: true },
+    { to: "/dashboard", label: "Vault", show: permissions.canModify },
     { to: "/members", label: "People", show: permissions.canModify },
     { to: "/plans", label: "Plan", show: permissions.canModify },
+    { to: "/settings", label: "Settings", show: true },
+    { to: "/admin/release-requests", label: "Admin", show: Boolean(currentUser?.isAdmin) },
   ].filter((l) => l.show);
   const [menuOpen, setMenuOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
@@ -44,21 +46,21 @@ export function Header() {
   }, []);
 
   return (
-    <header className="sticky top-0 z-40 bg-background/90 backdrop-blur-md border-b border-border">
-      <div className="container flex items-center justify-between h-16">
+    <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-md border-b border-border">
+      <div className="container flex items-center justify-between h-14">
         <Link to={isAuthenticated ? "/dashboard" : "/"} className="shrink-0">
           <SealMark size={32} />
         </Link>
 
         {isAuthenticated ? (
           <>
-            <nav className="hidden md:flex items-center gap-8">
+            <nav className="hidden md:flex items-center gap-6">
               {authedLinks.map((l) => (
                 <NavLink
                   key={l.to}
                   to={l.to}
                   className={({ isActive }) =>
-                    `text-base transition-colors py-2 ${
+                    `text-sm transition-colors py-2 ${
                       isActive
                         ? "text-foreground font-medium"
                         : "text-muted-foreground hover:text-foreground"
@@ -75,18 +77,18 @@ export function Header() {
               <div className="relative" ref={notifRef}>
                 <button
                   onClick={() => setNotifOpen((o) => !o)}
-                  className="relative p-2.5 text-muted-foreground hover:text-foreground transition-colors rounded-md"
+                  className="relative p-2 text-muted-foreground hover:text-foreground transition-colors rounded-md"
                   aria-label="Notifications"
                 >
-                  <Bell size={20} strokeWidth={1.5} />
+                  <Bell size={18} strokeWidth={1.5} />
                   {unread > 0 && (
                     <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-accent" />
                   )}
                 </button>
                 {notifOpen && (
-                  <div className="absolute right-0 top-full mt-2 w-[380px] card-surface shadow-lg overflow-hidden">
-                    <div className="px-5 py-4 border-b border-border flex items-baseline justify-between">
-                      <h3 className="text-lg font-semibold">Activity</h3>
+                  <div className="absolute right-0 top-full mt-2 w-[360px] card-surface overflow-hidden">
+                    <div className="px-4 py-3 border-b border-border flex items-baseline justify-between">
+                      <h3 className="text-base font-semibold">Activity</h3>
                       <span className="text-sm text-muted-foreground">{unread} unread</span>
                     </div>
                     <div className="max-h-[360px] overflow-y-auto">
@@ -99,11 +101,11 @@ export function Header() {
                           <button
                             key={n.id}
                             onClick={() => markNotificationRead(n.id)}
-                            className={`w-full text-left px-5 py-4 border-b border-border last:border-b-0 hover:bg-muted transition-colors ${
+                            className={`w-full text-left px-4 py-3 border-b border-border last:border-b-0 hover:bg-muted transition-colors ${
                               !n.read ? "bg-secondary/50" : ""
                             }`}
                           >
-                            <p className="text-base text-foreground leading-snug">{n.message}</p>
+                            <p className="text-sm text-foreground leading-snug">{n.message}</p>
                             <p className="text-xs text-muted-foreground mt-1.5">
                               {new Date(n.timestamp).toLocaleDateString("en-US", {
                                 month: "long",
@@ -122,7 +124,7 @@ export function Header() {
               <div className="relative hidden md:block" ref={menuRef}>
                 <button
                   onClick={() => setMenuOpen((o) => !o)}
-                  className="flex items-center gap-2 pl-2 pr-3 py-1.5 text-foreground hover:bg-muted transition-colors rounded-md"
+                  className="flex items-center gap-2 pl-2 pr-2.5 py-1.5 text-foreground hover:bg-muted transition-colors rounded-md"
                 >
                   {currentUser?.avatarUrl ? (
                     <img
@@ -132,19 +134,19 @@ export function Header() {
                       referrerPolicy="no-referrer"
                     />
                   ) : (
-                    <span className="w-8 h-8 rounded-full bg-primary text-primary-foreground inline-flex items-center justify-center text-sm font-semibold">
+                    <span className="w-7 h-7 rounded-full bg-primary text-primary-foreground inline-flex items-center justify-center text-xs font-semibold">
                       {(currentUser?.name || "?").charAt(0).toUpperCase()}
                     </span>
                   )}
-                  <span className="text-base">
+                  <span className="text-sm">
                     {currentUser?.name?.split(" ")[0]}
                   </span>
                   <ChevronDown size={14} strokeWidth={1.5} />
                 </button>
                 {menuOpen && (
-                  <div className="absolute right-0 top-full mt-2 w-[260px] card-surface shadow-lg overflow-hidden">
-                    <div className="px-5 py-4 border-b border-border">
-                      <p className="text-base font-medium text-foreground truncate">
+                  <div className="absolute right-0 top-full mt-2 w-[240px] card-surface overflow-hidden">
+                    <div className="px-4 py-3 border-b border-border">
+                      <p className="text-sm font-medium text-foreground truncate">
                         {currentUser?.name}
                       </p>
                       <p className="text-sm text-muted-foreground truncate mt-0.5">
@@ -153,17 +155,33 @@ export function Header() {
                     </div>
                     <button
                       onClick={() => navigate("/dashboard")}
-                      className="w-full flex items-center gap-3 px-5 py-3 text-base text-foreground hover:bg-muted transition-colors text-left"
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-foreground hover:bg-muted transition-colors text-left"
                     >
                       <UserIcon size={16} strokeWidth={1.5} />
                       Vault
                     </button>
                     <button
+                      onClick={() => navigate("/settings")}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-foreground hover:bg-muted transition-colors text-left"
+                    >
+                      <Settings size={16} strokeWidth={1.5} />
+                      Settings
+                    </button>
+                    {currentUser?.isAdmin && (
+                      <button
+                        onClick={() => navigate("/admin/release-requests")}
+                        className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-foreground hover:bg-muted transition-colors text-left"
+                      >
+                        <Check size={16} strokeWidth={1.5} />
+                        Admin review
+                      </button>
+                    )}
+                    <button
                       onClick={() => {
                         logout();
                         navigate("/");
                       }}
-                      className="w-full flex items-center gap-3 px-5 py-3 text-base text-foreground hover:bg-muted transition-colors text-left border-t border-border"
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-foreground hover:bg-muted transition-colors text-left border-t border-border"
                     >
                       <LogOut size={16} strokeWidth={1.5} />
                       Sign out
@@ -186,7 +204,7 @@ export function Header() {
             <div className="hidden sm:flex items-center gap-3">
               <Link
                 to="/login"
-                className="text-base text-muted-foreground hover:text-foreground transition-colors px-3 py-2"
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors px-3 py-2"
               >
                 Sign in
               </Link>
@@ -257,7 +275,7 @@ function MobileVaultPicker() {
     return (
       <div className="pb-2">
         <p className="text-sm font-medium text-muted-foreground mb-1">Current vault</p>
-        <p className="text-xl">{currentVaultSummary.name}</p>
+        <p className="text-xl">{vaultDisplayName(currentVaultSummary)}</p>
       </div>
     );
   }
@@ -274,7 +292,7 @@ function MobileVaultPicker() {
       >
         {vaults.map((v) => (
           <option key={v.id} value={v.id}>
-            {v.name} · {v.role}
+            {vaultDisplayName(v)} · {vaultAccessLabel(v)}
           </option>
         ))}
       </select>

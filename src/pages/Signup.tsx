@@ -52,8 +52,8 @@ export default function Signup() {
           </Link>
         </div>
 
-        <div className="card-surface p-8 md:p-10">
-          <h1 className="text-3xl font-bold text-center text-foreground mb-2">
+        <div className="card-surface p-7 md:p-8">
+          <h1 className="text-2xl font-semibold text-center text-foreground mb-2">
             Create your account
           </h1>
           <p className="text-center text-muted-foreground mb-8">

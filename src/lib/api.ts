@@ -13,10 +13,16 @@
  */
 
 import type {
+  AdminReleaseRequest,
   Notification,
+  DocumentType,
+  PlanLimits,
+  ReleaseRequest,
   SubscriptionPlan,
   User,
   Vault,
+  MemberPermission,
+  VaultDocument,
   VaultMember,
   VaultRole,
   VaultSummary,
@@ -85,6 +91,47 @@ async function request<T>(
   return data as T;
 }
 
+async function upload<T>(path: string, body: FormData): Promise<T> {
+  const token = localStorage.getItem("simplysafelegacy.token");
+  const headers: Record<string, string> = {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+  if (activeVaultId) headers["X-Vault-Id"] = activeVaultId;
+
+  const res = await fetch(`${API_URL}${path}`, {
+    method: "POST",
+    headers,
+    body,
+  });
+  const text = await res.text();
+  const data = text ? JSON.parse(text) : null;
+  if (!res.ok) {
+    const msg = (data && data.error) || res.statusText || "Request failed";
+    throw new ApiError(res.status, msg, data?.detail);
+  }
+  return data as T;
+}
+
+async function download(path: string): Promise<Blob> {
+  const token = localStorage.getItem("simplysafelegacy.token");
+  const res = await fetch(`${API_URL}${path}`, {
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    let data: { error?: string; detail?: string } | null = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = null;
+    }
+    throw new ApiError(res.status, data?.error || res.statusText || "Download failed", data?.detail);
+  }
+  return res.blob();
+}
+
 export interface AuthResponse {
   token: string;
   user: User;
@@ -142,9 +189,14 @@ export const api = {
         body: data as unknown as Json,
       }),
     release: (released: boolean) =>
-      request<{ releasedAt: string | null }>("/vault/release", {
+      request<{ releasedAt: string | null; releasedDocuments?: DocumentType[] }>("/vault/release", {
         method: "POST",
         body: { released },
+        vaultScoped: true,
+      }),
+    resealDocument: (type: DocumentType) =>
+      request<{ documentType: DocumentType }>(`/vault/document-releases/${type}`, {
+        method: "DELETE",
         vaultScoped: true,
       }),
     updateWill: (will: {
@@ -158,17 +210,41 @@ export const api = {
         body: will,
         vaultScoped: true,
       }),
+    updateDocument: (
+      type: DocumentType,
+      document: {
+        hasDocument: boolean;
+        locationType?: string;
+        locationAddress?: string;
+        locationDescription?: string;
+      },
+    ) =>
+      request<VaultDocument>(`/vault/documents/${type}`, {
+        method: "PUT",
+        body: document as unknown as Json,
+        vaultScoped: true,
+      }),
   },
 
   members: {
     list: () => request<VaultMember[]>("/members", { vaultScoped: true }),
-    create: (m: { name: string; email: string; role: VaultRole }) =>
+    create: (m: {
+      name: string;
+      email: string;
+      role: VaultRole;
+      dateOfBirth?: string;
+      accessTiming?: string;
+      permissions?: MemberPermission[];
+    }) =>
       request<VaultMember>("/members", {
         method: "POST",
         body: m as unknown as Json,
         vaultScoped: true,
       }),
-    update: (id: string, updates: Partial<Pick<VaultMember, "name" | "role">>) =>
+    update: (
+      id: string,
+      updates: Partial<Pick<VaultMember, "name" | "role" | "permissions">>,
+    ) =>
       request<VaultMember>(`/members/${id}`, {
         method: "PATCH",
         body: updates as unknown as Json,
@@ -181,7 +257,42 @@ export const api = {
       }),
   },
 
+  releaseRequests: {
+    list: () => request<ReleaseRequest[]>("/vault/release-requests", { vaultScoped: true }),
+    create: (data: {
+      documentType: string;
+      releaseReason: string;
+      note?: string;
+      files: File[];
+    }) => {
+      const form = new FormData();
+      form.set("documentType", data.documentType);
+      form.set("releaseReason", data.releaseReason);
+      if (data.note) form.set("note", data.note);
+      data.files.forEach((file) => form.append("files", file));
+      return upload<ReleaseRequest>("/vault/release-requests", form);
+    },
+  },
+
+  admin: {
+    releaseRequests: (status: "pending" | "approved" | "rejected" | "all" = "pending") =>
+      request<AdminReleaseRequest[]>(`/admin/release-requests?status=${encodeURIComponent(status)}`),
+    approveReleaseRequest: (id: string, note?: string) =>
+      request<AdminReleaseRequest>(`/admin/release-requests/${id}/approve`, {
+        method: "POST",
+        body: { note: note ?? "" },
+      }),
+    rejectReleaseRequest: (id: string, note?: string) =>
+      request<AdminReleaseRequest>(`/admin/release-requests/${id}/reject`, {
+        method: "POST",
+        body: { note: note ?? "" },
+      }),
+    downloadReleaseFile: (id: string) =>
+      download(`/admin/release-request-files/${id}/download`),
+  },
+
   billing: {
+    plans: () => request<PlanLimits[]>("/billing/plans"),
     // Returns a Stripe-hosted Checkout URL. The caller should
     // window.location = url to redirect.
     checkout: (plan: SubscriptionPlan) =>
@@ -192,6 +303,14 @@ export const api = {
     // Returns a Stripe Customer Portal URL for managing the subscription.
     portal: () =>
       request<{ url: string }>("/billing/portal", { method: "POST" }),
+  },
+
+  support: {
+    createTicket: (data: { subject: string; message: string }) =>
+      request<{ status: string }>("/support/tickets", {
+        method: "POST",
+        body: data,
+      }),
   },
 
   notifications: {
