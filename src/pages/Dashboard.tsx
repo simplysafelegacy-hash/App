@@ -4,8 +4,10 @@ import { Layout } from "@/components/layout/Layout";
 import { useApp } from "@/context/AppContext";
 import { planAllowsDocument, roleLabel, willLocationLabel } from "@/lib/permissions";
 import { RoleBadge, isVaultIdentityHidden, vaultAccessLabel, vaultDisplayName, vaultOwnerName } from "@/components/VaultSwitcher";
-import type { DocumentLocationType, DocumentType, VaultDocument, VaultSummary, Will } from "@/lib/types";
-import { FileText, Lock, Pencil, Plus, Upload, Unlock, X } from "lucide-react";
+import { ListSection } from "@/components/ListSection";
+import { FuneralCard } from "@/components/FuneralCard";
+import type { DocumentLocationType, DocumentType, ListSection as ListSectionKind, VaultAttachment, VaultDocument, VaultSummary, Will } from "@/lib/types";
+import { Download, FileText, Lock, Pencil, Plus, Trash2, Upload, Unlock, X } from "lucide-react";
 
 const DOCUMENT_LOCATIONS: { value: DocumentLocationType; label: string }[] = [
   { value: "home_safe", label: "Home safe" },
@@ -58,6 +60,12 @@ const DOCUMENT_ORDER: DocumentType[] = [
   "will",
   "power_of_attorney",
   "health_care_directive",
+];
+
+const LIST_SECTIONS: ListSectionKind[] = [
+  "personal_property",
+  "non_probate",
+  "contacts",
 ];
 
 export default function Dashboard() {
@@ -191,6 +199,9 @@ export default function Dashboard() {
               releasedByReview={releasedDocuments.includes(document.type)}
               canSubmitRelease={releaseRequestDocumentTypes.has(document.type)}
               designation={designationForDocument(currentVaultSummary, document.type)}
+              attachments={(vault.attachments ?? []).filter(
+                (a) => a.section === document.type,
+              )}
             />
           ))}
           {extraReleaseDocuments.length > 0 && (
@@ -199,6 +210,47 @@ export default function Dashboard() {
               vaultSummary={currentVaultSummary}
             />
           )}
+
+          {LIST_SECTIONS.map((section) => {
+            const sectionEntries = (vault.entries ?? []).filter(
+              (e) => e.section === section,
+            );
+            const planAllows = planAllowsDocument(planLimits, section);
+            // Owners see the section when their plan includes it (to add items)
+            // or when it already holds items. Readers see it only when they were
+            // given entries — the backend omits sections they can't read.
+            const show = permissions.canModify
+              ? planAllows || sectionEntries.length > 0
+              : sectionEntries.length > 0;
+            if (!show) return null;
+            return (
+              <ListSection
+                key={section}
+                section={section}
+                entries={sectionEntries}
+                canEdit={permissions.canModify && planAllows}
+              />
+            );
+          })}
+
+          {(() => {
+            const funeralAllowed = planAllowsDocument(planLimits, "funeral");
+            const showFuneral = permissions.canModify
+              ? funeralAllowed || vault.funeral.hasFuneral
+              : vault.funeral.hasFuneral;
+            if (!showFuneral) return null;
+            return (
+              <FuneralCard
+                funeral={vault.funeral}
+                canEdit={permissions.canModify && funeralAllowed}
+                lockedMessage={
+                  permissions.canModify && !funeralAllowed
+                    ? `${planLimits?.name ?? "Your current"} plan does not include funeral wishes.`
+                    : undefined
+                }
+              />
+            );
+          })()}
         </div>
 
         <div className="h-8" />
@@ -328,6 +380,7 @@ function DocumentCard({
   releasedByReview,
   canSubmitRelease,
   designation,
+  attachments,
 }: {
   document: VaultDocument;
   canEdit: boolean;
@@ -335,6 +388,7 @@ function DocumentCard({
   releasedByReview: boolean;
   canSubmitRelease: boolean;
   designation?: string | null;
+  attachments: VaultAttachment[];
 }) {
   const { resealDocument, updateDocument } = useApp();
   const config = DOCUMENT_CONFIG[document.type];
@@ -460,6 +514,11 @@ function DocumentCard({
             {canSubmitRelease && (
               <ReleaseRequestForm documentType={document.type} designation={designation} />
             )}
+            <DocumentCopyBlock
+              section={document.type}
+              canEdit={canEdit}
+              attachments={attachments}
+            />
           </dl>
         ) : (
           <div>
@@ -589,6 +648,158 @@ function DocumentCard({
         </form>
       )}
     </section>
+  );
+}
+
+const MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024;
+
+/**
+ * The stored copy of a document. Owners can upload/replace/remove a copy;
+ * everyone permitted to see the section can download it. The block only ever
+ * renders inside a card the caller can already read, so its presence never
+ * leaks a sealed document.
+ */
+function DocumentCopyBlock({
+  section,
+  canEdit,
+  attachments,
+}: {
+  section: DocumentType;
+  canEdit: boolean;
+  attachments: VaultAttachment[];
+}) {
+  const { uploadAttachment, removeAttachment, downloadAttachment } = useApp();
+  const inputId = `attachment-file-${section}`;
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const onUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = ""; // allow re-selecting the same file later
+    if (!file) return;
+    if (file.size > MAX_ATTACHMENT_BYTES) {
+      setError("That file is over 50 MB. Please upload a smaller copy.");
+      return;
+    }
+    setError(null);
+    setBusy(true);
+    try {
+      await uploadAttachment(section, file);
+    } catch {
+      setError("Upload failed. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onDownload = async (attachment: VaultAttachment) => {
+    setError(null);
+    try {
+      await downloadAttachment(attachment);
+    } catch {
+      setError("Download failed. Please try again.");
+    }
+  };
+
+  const onRemove = async (attachment: VaultAttachment) => {
+    if (!window.confirm(`Remove "${attachment.fileName}"?`)) return;
+    setError(null);
+    setBusy(true);
+    try {
+      await removeAttachment(attachment.id);
+    } catch {
+      setError("Could not remove the file. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Nothing to show: a non-owner viewer with no copy on file sees nothing.
+  if (attachments.length === 0 && !canEdit) return null;
+
+  return (
+    <div className="pt-3 mt-1 border-t border-border/60">
+      <dt className="text-xs font-medium text-muted-foreground mb-2">
+        Copy on file
+      </dt>
+      <dd>
+        {attachments.length > 0 ? (
+          <ul className="space-y-2">
+            {attachments.map((attachment) => (
+              <li
+                key={attachment.id}
+                className="flex items-center gap-3 rounded-md border border-border/60 bg-secondary/20 px-3 py-2"
+              >
+                <FileText size={18} strokeWidth={1.75} className="text-muted-foreground shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm text-foreground truncate">
+                    {attachment.fileName}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {formatFileSize(attachment.fileSize)}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onDownload(attachment)}
+                  className="btn-secondary !min-h-[32px] !px-2 !text-xs"
+                  aria-label={`Download ${attachment.fileName}`}
+                >
+                  <Download size={14} strokeWidth={1.75} />
+                  Download
+                </button>
+                {canEdit && (
+                  <button
+                    type="button"
+                    onClick={() => onRemove(attachment)}
+                    disabled={busy}
+                    className="text-muted-foreground hover:text-destructive transition-colors disabled:opacity-50"
+                    aria-label={`Remove ${attachment.fileName}`}
+                  >
+                    <Trash2 size={16} strokeWidth={1.75} />
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            No copy uploaded yet.
+          </p>
+        )}
+
+        {canEdit && (
+          <div className="mt-3">
+            <input
+              id={inputId}
+              type="file"
+              className="sr-only"
+              onChange={onUpload}
+              disabled={busy}
+            />
+            <label
+              htmlFor={inputId}
+              className={`btn-secondary !min-h-[36px] !text-sm cursor-pointer inline-flex ${
+                busy ? "opacity-50 pointer-events-none" : ""
+              }`}
+            >
+              <Upload size={14} strokeWidth={1.75} />
+              {busy
+                ? "Uploading…"
+                : attachments.length > 0
+                ? "Upload another copy"
+                : "Upload a copy"}
+            </label>
+            <p className="field-hint">
+              Stored privately. Only people you permit — at the time you set —
+              can open it. Up to 50 MB.
+            </p>
+          </div>
+        )}
+
+        {error && <p className="text-sm text-destructive mt-2">{error}</p>}
+      </dd>
+    </div>
   );
 }
 
@@ -998,6 +1209,16 @@ function SealedAccessView({
   );
 }
 
+// Only the singular legal documents participate in the proof-based release
+// request flow; the list sections do not.
+function isReleaseRequestDocument(section: string): section is DocumentType {
+  return (
+    section === "will" ||
+    section === "power_of_attorney" ||
+    section === "health_care_directive"
+  );
+}
+
 function releaseRequestDocumentsForSummary(summary: VaultSummary): DocumentType[] {
   if (summary.role === "owner") return [];
   const vaultReleased = Boolean(summary.releasedAt);
@@ -1005,8 +1226,10 @@ function releaseRequestDocumentsForSummary(summary: VaultSummary): DocumentType[
   const recordedDocuments = summary.recordedDocuments ?? [];
   if (recordedDocuments.length) {
     return recordedDocuments.filter(
-      (documentType) =>
-        !vaultReleased && !releasedDocuments.includes(documentType),
+      (documentType): documentType is DocumentType =>
+        isReleaseRequestDocument(documentType) &&
+        !vaultReleased &&
+        !releasedDocuments.includes(documentType),
     );
   }
   const permissions = summary.permissions?.length
@@ -1016,6 +1239,7 @@ function releaseRequestDocumentsForSummary(summary: VaultSummary): DocumentType[
 
   for (const permission of permissions) {
     if (!permission) continue;
+    if (!isReleaseRequestDocument(permission.documentType)) continue;
     if (permission.accessTiming === "now") continue;
     if (vaultReleased || releasedDocuments.includes(permission.documentType)) continue;
     if (!out.includes(permission.documentType)) out.push(permission.documentType);

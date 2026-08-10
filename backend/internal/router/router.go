@@ -85,6 +85,18 @@ func New(h *handlers.Deps, authSvc *auth.Service, allowedOrigins []string, logge
 			r.Get("/vault/release-requests", h.ListReleaseRequests)
 			r.Post("/vault/release-requests", h.CreateReleaseRequest)
 
+			r.Get("/vault/attachments", h.ListAttachments)
+			r.Post("/vault/attachments", h.CreateAttachment)
+			r.Get("/vault/attachments/{id}/download", h.DownloadAttachment)
+			r.Delete("/vault/attachments/{id}", h.DeleteAttachment)
+
+			r.Get("/vault/entries", h.ListEntries)
+			r.Post("/vault/entries", h.CreateEntry)
+			r.Put("/vault/entries/{id}", h.UpdateEntry)
+			r.Delete("/vault/entries/{id}", h.DeleteEntry)
+
+			r.Put("/vault/funeral", h.UpdateFuneralWishes)
+
 			r.Get("/members", h.ListMembers)
 			r.Post("/members", h.CreateMember)
 			r.Patch("/members/{id}", h.UpdateMember)

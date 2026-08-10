@@ -64,15 +64,18 @@ func (v CtxVault) CanReadDocument(documentType string) bool {
 	if len(v.Permissions) > 0 {
 		return false
 	}
+	// Fallback for members with no explicit permission rows. In practice every
+	// non-owner member is created with at least one permission, so this path is
+	// rarely hit; it stays conservative and scoped to the will.
 	switch v.Role {
-	case models.RoleOwner, models.RoleSteward:
-		return true
+	case models.RoleSteward:
+		return documentType == models.SectionWill
 	case models.RoleSuccessor:
-		return documentType == "will" && v.IsDocumentReleased(documentType)
+		return documentType == models.SectionWill && v.IsDocumentReleased(documentType)
 	case models.RolePOAAgent:
-		return documentType == "power_of_attorney" && (v.AccessTiming == models.AccessNow || v.IsDocumentReleased(documentType))
+		return documentType == models.SectionPowerOfAttorney && (v.AccessTiming == models.AccessNow || v.IsDocumentReleased(documentType))
 	case models.RoleHealthCareProxy:
-		return documentType == "health_care_directive" && (v.AccessTiming == models.AccessNow || v.IsDocumentReleased(documentType))
+		return documentType == models.SectionHealthCareDirective && (v.AccessTiming == models.AccessNow || v.IsDocumentReleased(documentType))
 	}
 	return false
 }
@@ -120,15 +123,18 @@ func (v CtxVault) permissionCanReadDocument(p models.MemberPermission, documentT
 	if p.Hidden {
 		return false
 	}
+	// steward/successor are generic "read now" / "read after release" roles that
+	// apply to any section (will and the list/record sections alike). POA and
+	// health-care-proxy stay bound to their specific document.
 	switch p.PermissionRole {
 	case models.RoleSteward:
-		return documentType == "will"
+		return p.AccessTiming == models.AccessNow || v.IsDocumentReleased(documentType)
 	case models.RoleSuccessor:
-		return documentType == "will" && v.IsDocumentReleased(documentType)
+		return v.IsDocumentReleased(documentType)
 	case models.RolePOAAgent:
-		return documentType == "power_of_attorney" && (p.AccessTiming == models.AccessNow || v.IsDocumentReleased(documentType))
+		return documentType == models.SectionPowerOfAttorney && (p.AccessTiming == models.AccessNow || v.IsDocumentReleased(documentType))
 	case models.RoleHealthCareProxy:
-		return documentType == "health_care_directive" && (p.AccessTiming == models.AccessNow || v.IsDocumentReleased(documentType))
+		return documentType == models.SectionHealthCareDirective && (p.AccessTiming == models.AccessNow || v.IsDocumentReleased(documentType))
 	}
 	return false
 }

@@ -23,6 +23,20 @@ const (
 	PlanSafekeeping = "safekeeping"
 )
 
+// Vault sections. Each is a "document type" the permission engine can gate.
+// The first three are singular documents inlined onto the vaults row; the
+// list/record sections below are backed by vault_entries (or a dedicated
+// record) and share the same access model.
+const (
+	SectionWill                = "will"
+	SectionPowerOfAttorney     = "power_of_attorney"
+	SectionHealthCareDirective = "health_care_directive"
+	SectionPersonalProperty    = "personal_property"
+	SectionNonProbate          = "non_probate"
+	SectionFuneral             = "funeral"
+	SectionContacts            = "contacts"
+)
+
 type PlanLimits struct {
 	PlanCode                 string `json:"planCode"`
 	Name                     string `json:"name"`
@@ -33,6 +47,10 @@ type PlanLimits struct {
 	AllowWill                bool   `json:"allowWill"`
 	AllowPowerOfAttorney     bool   `json:"allowPowerOfAttorney"`
 	AllowHealthCareDirective bool   `json:"allowHealthCareDirective"`
+	AllowPersonalProperty    bool   `json:"allowPersonalProperty"`
+	AllowNonProbate          bool   `json:"allowNonProbate"`
+	AllowFuneral             bool   `json:"allowFuneral"`
+	AllowContacts            bool   `json:"allowContacts"`
 	Active                   bool   `json:"active"`
 }
 
@@ -74,6 +92,61 @@ type MemberPermission struct {
 	PermissionRole string `json:"permissionRole"`
 	AccessTiming   string `json:"accessTiming"`
 	Hidden         bool   `json:"hidden"`
+}
+
+// VaultEntry is one item in a list-style section (personal property or a
+// non-probate asset). The section-specific fields live in Details as free-form
+// JSON so new list sections need no schema change. Beneficiaries are the
+// people who should receive the item; they are visible only to callers who may
+// read the entry's section.
+type VaultEntry struct {
+	ID            string                 `json:"id"`
+	Section       string                 `json:"section"`
+	Title         string                 `json:"title"`
+	Details       map[string]any         `json:"details"`
+	SortOrder     int                    `json:"sortOrder"`
+	Beneficiaries []VaultEntryBeneficiary `json:"beneficiaries"`
+	CreatedAt     time.Time              `json:"createdAt"`
+	UpdatedAt     time.Time              `json:"updatedAt"`
+}
+
+type VaultEntryBeneficiary struct {
+	ID           string  `json:"id"`
+	Name         string  `json:"name"`
+	Relationship string  `json:"relationship"`
+	Share        string  `json:"share"`
+	Note         string  `json:"note"`
+	MemberID     *string `json:"memberId,omitempty"`
+	SortOrder    int     `json:"sortOrder"`
+}
+
+// FuneralWishes is the owner's funeral & burial instructions — one record per
+// vault, gated as the 'funeral' section. HasFuneral mirrors Will.HasWill: it
+// records whether the owner has entered anything.
+type FuneralWishes struct {
+	HasFuneral      bool       `json:"hasFuneral"`
+	Disposition     string     `json:"disposition"`
+	ServiceWishes   string     `json:"serviceWishes"`
+	ServiceLocation string     `json:"serviceLocation"`
+	Officiant       string     `json:"officiant"`
+	ReadingsMusic   string     `json:"readingsMusic"`
+	PrepaidProvider string     `json:"prepaidProvider"`
+	Notes           string     `json:"notes"`
+	UpdatedAt       *time.Time `json:"updatedAt,omitempty"`
+}
+
+// VaultAttachment is an uploaded file copy stored in GCS and attached to a
+// vault section (and optionally a specific list entry). It is returned to a
+// caller only when they may read that section; the file itself is streamed
+// through a permission-checked download handler, never a public URL.
+type VaultAttachment struct {
+	ID          string    `json:"id"`
+	Section     string    `json:"section"`
+	EntryID     *string   `json:"entryId,omitempty"`
+	FileName    string    `json:"fileName"`
+	ContentType string    `json:"contentType"`
+	FileSize    int64     `json:"fileSize"`
+	CreatedAt   time.Time `json:"createdAt"`
 }
 
 type ReleaseRequestFile struct {
@@ -124,11 +197,14 @@ type Vault struct {
 	OwnerPhone            string          `json:"ownerPhone"`
 	EmergencyContactName  string          `json:"emergencyContactName"`
 	EmergencyContactPhone string          `json:"emergencyContactPhone"`
-	ReleasedAt            *time.Time      `json:"releasedAt,omitempty"`
-	Will                  Will            `json:"will"`
-	Documents             []VaultDocument `json:"documents"`
-	Members               []VaultMember   `json:"members"`
-	CreatedAt             time.Time       `json:"createdAt"`
+	ReleasedAt            *time.Time        `json:"releasedAt,omitempty"`
+	Will                  Will              `json:"will"`
+	Documents             []VaultDocument   `json:"documents"`
+	Attachments           []VaultAttachment `json:"attachments"`
+	Entries               []VaultEntry      `json:"entries"`
+	Funeral               FuneralWishes     `json:"funeral"`
+	Members               []VaultMember     `json:"members"`
+	CreatedAt             time.Time         `json:"createdAt"`
 }
 
 // VaultSummary is the trimmed view returned by GET /api/me/vaults — enough to

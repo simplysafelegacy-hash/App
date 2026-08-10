@@ -94,13 +94,39 @@ func listRecordedDocumentTypes(ctx context.Context, d *Deps, vaultID string) ([]
 
 	out := []string{}
 	if hasWill {
-		out = append(out, "will")
+		out = append(out, models.SectionWill)
 	}
 	if hasPOA {
-		out = append(out, "power_of_attorney")
+		out = append(out, models.SectionPowerOfAttorney)
 	}
 	if hasHealth {
-		out = append(out, "health_care_directive")
+		out = append(out, models.SectionHealthCareDirective)
+	}
+
+	// The list and funeral sections are "recorded" when they hold anything, so
+	// a permitted viewer sees them in their recorded-documents summary.
+	var funeralRecorded bool
+	if err := d.DB.QueryRow(ctx, `
+		SELECT COALESCE(has_funeral, FALSE)
+		FROM vault_funeral_wishes
+		WHERE vault_id = $1
+	`, vaultID).Scan(&funeralRecorded); err != nil && !isNoRows(err) {
+		return nil, err
+	}
+	if funeralRecorded {
+		out = append(out, models.SectionFuneral)
+	}
+
+	for _, section := range []string{models.SectionPersonalProperty, models.SectionNonProbate, models.SectionContacts} {
+		var count int
+		if err := d.DB.QueryRow(ctx, `
+			SELECT COUNT(*) FROM vault_entries WHERE vault_id = $1 AND section = $2
+		`, vaultID, section).Scan(&count); err != nil {
+			return nil, err
+		}
+		if count > 0 {
+			out = append(out, section)
+		}
 	}
 	return out, nil
 }

@@ -8,12 +8,14 @@ import type {
   PlanLimits,
   VaultMember,
   VaultRole,
+  VaultSection,
 } from "@/lib/types";
 import {
   accessTimingLabel,
   documentLabel,
   planAllowsDocument,
   roleLabel,
+  sectionLabel,
 } from "@/lib/permissions";
 import { ArrowLeft, Check, Plus, Trash2 } from "lucide-react";
 
@@ -335,17 +337,29 @@ type PermissionRemoval = {
   role: VaultRole;
 };
 
-function permissionAllowedByPlan(
+// A permission option is available when the plan includes that option's
+// section and allows at least one authorized person. Gating by section (not
+// role) is what lets a steward/successor option target a list section.
+function permissionOptionAllowedByPlan(
   limits: PlanLimits | null | undefined,
-  role: VaultRole,
+  section: VaultSection,
 ) {
   if (!limits) return true;
   if (limits.maxAuthorizedPeople <= 0) return false;
-  if (role === "steward") return planAllowsDocument(limits, "will");
-  if (role === "poa_agent") return planAllowsDocument(limits, "power_of_attorney");
-  if (role === "health_care_proxy") return planAllowsDocument(limits, "health_care_directive");
-  if (role === "successor") return planAllowsDocument(limits, "will");
-  return true;
+  return planAllowsDocument(limits, section);
+}
+
+// Sections that use the steward(now) / successor(after-death) model. The will
+// and the two list sections behave identically; toggling one of the two roles
+// replaces the other for that section.
+function isStewardSuccessorSection(documentType: string): boolean {
+  return (
+    documentType === "will" ||
+    documentType === "personal_property" ||
+    documentType === "non_probate" ||
+    documentType === "funeral" ||
+    documentType === "contacts"
+  );
 }
 
 function PermissionPicker({
@@ -357,39 +371,29 @@ function PermissionPicker({
   planLimits: PlanLimits | null | undefined;
   onChange: (permissions: MemberPermission[]) => void;
 }) {
+  const matchesOption = (p: MemberPermission, option: MemberPermission) =>
+    p.documentType === option.documentType &&
+    (isStewardSuccessorSection(option.documentType) ||
+      p.permissionRole === option.permissionRole);
+
   const toggle = (permission: MemberPermission) => {
-    const exists = permissions.some(
-      (p) =>
-        p.documentType === permission.documentType &&
-        (permission.documentType === "will" ||
-          p.permissionRole === permission.permissionRole),
-    );
-    const withoutCurrent = permissions.filter(
-      (p) =>
-        !(
-          p.documentType === permission.documentType &&
-          (permission.documentType === "will" ||
-            p.permissionRole === permission.permissionRole)
-        ),
-    );
+    const exists = permissions.some((p) => matchesOption(p, permission));
+    const withoutCurrent = permissions.filter((p) => !matchesOption(p, permission));
     if (exists) {
       onChange(withoutCurrent);
       return;
     }
-    const next =
-      permission.documentType === "will"
-        ? withoutCurrent.filter((p) => p.documentType !== "will")
-        : withoutCurrent;
+    // Steward/successor sections allow only one role at a time, so drop any
+    // existing permission on the same section before adding the new one.
+    const next = isStewardSuccessorSection(permission.documentType)
+      ? withoutCurrent.filter((p) => p.documentType !== permission.documentType)
+      : withoutCurrent;
     onChange([...next, permission]);
   };
   const update = (permission: MemberPermission, changes: Partial<MemberPermission>) => {
     onChange(
       permissions.map((p) => {
-        const matches =
-          p.documentType === permission.documentType &&
-          (permission.documentType === "will" ||
-            p.permissionRole === permission.permissionRole);
-        if (!matches) return p;
+        if (!matchesOption(p, permission)) return p;
         return normalizeDraftPermission({ ...p, ...changes });
       }),
     );
@@ -398,17 +402,37 @@ function PermissionPicker({
     {
       label: `${documentLabel.will} access`,
       permission: { documentType: "will", permissionRole: "steward", accessTiming: "now", hidden: false },
-      disabled: !permissionAllowedByPlan(planLimits, "steward"),
+      disabled: !permissionOptionAllowedByPlan(planLimits, "will"),
     },
     {
       label: "Power of Attorney Agent",
       permission: { documentType: "power_of_attorney", permissionRole: "poa_agent", accessTiming: "incapacitated", hidden: false },
-      disabled: !permissionAllowedByPlan(planLimits, "poa_agent"),
+      disabled: !permissionOptionAllowedByPlan(planLimits, "power_of_attorney"),
     },
     {
       label: "Health Care Proxy",
       permission: { documentType: "health_care_directive", permissionRole: "health_care_proxy", accessTiming: "incapacitated", hidden: false },
-      disabled: !permissionAllowedByPlan(planLimits, "health_care_proxy"),
+      disabled: !permissionOptionAllowedByPlan(planLimits, "health_care_directive"),
+    },
+    {
+      label: "Personal property access",
+      permission: { documentType: "personal_property", permissionRole: "steward", accessTiming: "now", hidden: false },
+      disabled: !permissionOptionAllowedByPlan(planLimits, "personal_property"),
+    },
+    {
+      label: "Non-probate assets access",
+      permission: { documentType: "non_probate", permissionRole: "steward", accessTiming: "now", hidden: false },
+      disabled: !permissionOptionAllowedByPlan(planLimits, "non_probate"),
+    },
+    {
+      label: "Funeral wishes access",
+      permission: { documentType: "funeral", permissionRole: "steward", accessTiming: "now", hidden: false },
+      disabled: !permissionOptionAllowedByPlan(planLimits, "funeral"),
+    },
+    {
+      label: "Important contacts access",
+      permission: { documentType: "contacts", permissionRole: "steward", accessTiming: "now", hidden: false },
+      disabled: !permissionOptionAllowedByPlan(planLimits, "contacts"),
     },
   ];
 
@@ -417,14 +441,9 @@ function PermissionPicker({
       <label className="field-label">Document permissions</label>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {options.map(({ label, permission, disabled }) => {
-          const selected = permissions.find(
-            (p) =>
-              p.documentType === permission.documentType &&
-              (permission.documentType === "will" ||
-                p.permissionRole === permission.permissionRole),
-          );
+          const selected = permissions.find((p) => matchesOption(p, permission));
           const timingOptions: AccessTiming[] =
-            permission.documentType === "will"
+            isStewardSuccessorSection(permission.documentType)
               ? ["now", "after_death"]
               : ["now", "incapacitated"];
           const showHideControl = Boolean(selected);
@@ -672,7 +691,8 @@ function formatBirthday(value: string) {
 
 function permissionSummary(permission: MemberPermission) {
   const hidden = permission.hidden ? ", hidden" : "";
-  return `${roleLabel[permission.permissionRole]} (${accessTimingLabel[permission.accessTiming]}${hidden})`;
+  const section = sectionLabel[permission.documentType] ?? permission.documentType;
+  return `${section}: ${roleLabel[permission.permissionRole]} (${accessTimingLabel[permission.accessTiming]}${hidden})`;
 }
 
 function hasPermissionRole(member: VaultMember, role: VaultRole) {
@@ -725,7 +745,7 @@ function normalizeDraftPermissions(permissions: MemberPermission[]) {
 }
 
 function normalizeDraftPermission(permission: MemberPermission): MemberPermission {
-  if (permission.documentType !== "will") {
+  if (!isStewardSuccessorSection(permission.documentType)) {
     return permission;
   }
   const accessTiming =

@@ -57,6 +57,9 @@ func (d *Deps) GetVault(w http.ResponseWriter, r *http.Request) {
 		full.Members = []models.VaultMember{}
 		full.Will = models.Will{}
 		full.Documents = []models.VaultDocument{}
+		full.Attachments = []models.VaultAttachment{}
+		full.Entries = []models.VaultEntry{}
+		full.Funeral = models.FuneralWishes{}
 		full.EmergencyContactName = ""
 		full.EmergencyContactPhone = ""
 		full.OwnerEmail = ""
@@ -174,6 +177,8 @@ func (d *Deps) CreateVault(w http.ResponseWriter, r *http.Request) {
 
 	v.Members = []models.VaultMember{}
 	v.Documents = documentsFromFields(v.Will, poa, health)
+	v.Attachments = []models.VaultAttachment{}
+	v.Entries = []models.VaultEntry{}
 	writeJSON(w, http.StatusCreated, v)
 }
 
@@ -423,7 +428,52 @@ func loadVault(ctx context.Context, d *Deps, vaultID string) (*models.Vault, err
 	v.Members = members
 	v.Documents = documentsFromFields(v.Will, poa, health)
 
+	attachments, err := listVaultAttachments(ctx, d, vaultID)
+	if err != nil {
+		return nil, err
+	}
+	v.Attachments = attachments
+
+	entries, err := listAllVaultEntries(ctx, d, vaultID)
+	if err != nil {
+		return nil, err
+	}
+	v.Entries = entries
+
+	funeral, err := loadFuneralWishes(ctx, d, vaultID)
+	if err != nil {
+		return nil, err
+	}
+	v.Funeral = funeral
+
 	return &v, nil
+}
+
+// listVaultAttachments returns every attachment on the vault, unfiltered.
+// Callers scrub sections the requester may not read (see GetVault).
+func listVaultAttachments(ctx context.Context, d *Deps, vaultID string) ([]models.VaultAttachment, error) {
+	rows, err := d.DB.Query(ctx, `
+		SELECT id, section, entry_id::text, file_name, content_type, file_size, created_at
+		FROM vault_attachments
+		WHERE vault_id = $1
+		ORDER BY created_at DESC
+	`, vaultID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []models.VaultAttachment{}
+	for rows.Next() {
+		var a models.VaultAttachment
+		var entryID *string
+		if err := rows.Scan(&a.ID, &a.Section, &entryID, &a.FileName, &a.ContentType, &a.FileSize, &a.CreatedAt); err != nil {
+			return nil, err
+		}
+		a.EntryID = entryID
+		out = append(out, a)
+	}
+	return out, rows.Err()
 }
 
 func strPtr(s string) *string { return &s }
@@ -502,7 +552,27 @@ func filterDocumentsForAccess(v *models.Vault, access CtxVault) {
 		}
 	}
 	v.Documents = filtered
-	if !access.CanReadDocument("will") {
+	if !access.CanReadDocument(models.SectionWill) {
 		v.Will = models.Will{}
+	}
+
+	attachments := make([]models.VaultAttachment, 0, len(v.Attachments))
+	for _, a := range v.Attachments {
+		if access.CanReadDocument(a.Section) {
+			attachments = append(attachments, a)
+		}
+	}
+	v.Attachments = attachments
+
+	entries := make([]models.VaultEntry, 0, len(v.Entries))
+	for _, e := range v.Entries {
+		if access.CanReadDocument(e.Section) {
+			entries = append(entries, e)
+		}
+	}
+	v.Entries = entries
+
+	if !access.CanReadDocument(models.SectionFuneral) {
+		v.Funeral = models.FuneralWishes{}
 	}
 }

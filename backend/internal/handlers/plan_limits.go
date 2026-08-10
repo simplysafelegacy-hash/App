@@ -11,7 +11,8 @@ func (d *Deps) listPlanLimits(ctx context.Context, activeOnly bool) ([]models.Pl
 	sql := `
 		SELECT plan_code, name, price_cents, cadence, display_order,
 		       max_authorized_people, allow_will, allow_power_of_attorney,
-		       allow_health_care_directive, active
+		       allow_health_care_directive, allow_personal_property,
+		       allow_non_probate, allow_funeral, allow_contacts, active
 		FROM subscription_plan_limits
 	`
 	if activeOnly {
@@ -32,7 +33,8 @@ func (d *Deps) listPlanLimits(ctx context.Context, activeOnly bool) ([]models.Pl
 			&limits.PlanCode, &limits.Name, &limits.PriceCents, &limits.Cadence,
 			&limits.DisplayOrder, &limits.MaxAuthorizedPeople, &limits.AllowWill,
 			&limits.AllowPowerOfAttorney, &limits.AllowHealthCareDirective,
-			&limits.Active,
+			&limits.AllowPersonalProperty, &limits.AllowNonProbate,
+			&limits.AllowFuneral, &limits.AllowContacts, &limits.Active,
 		); err != nil {
 			return nil, err
 		}
@@ -71,26 +73,36 @@ func (d *Deps) planLimitsByCode(ctx context.Context, planCode string) (models.Pl
 	err := d.DB.QueryRow(ctx, `
 		SELECT plan_code, name, price_cents, cadence, display_order,
 		       max_authorized_people, allow_will, allow_power_of_attorney,
-		       allow_health_care_directive, active
+		       allow_health_care_directive, allow_personal_property,
+		       allow_non_probate, allow_funeral, allow_contacts, active
 		FROM subscription_plan_limits
 		WHERE plan_code = $1
 	`, planCode).Scan(
 		&limits.PlanCode, &limits.Name, &limits.PriceCents, &limits.Cadence,
 		&limits.DisplayOrder, &limits.MaxAuthorizedPeople, &limits.AllowWill,
 		&limits.AllowPowerOfAttorney, &limits.AllowHealthCareDirective,
-		&limits.Active,
+		&limits.AllowPersonalProperty, &limits.AllowNonProbate,
+		&limits.AllowFuneral, &limits.AllowContacts, &limits.Active,
 	)
 	return limits, err
 }
 
 func documentAllowedByPlan(limits models.PlanLimits, documentType string) bool {
 	switch documentType {
-	case "will":
+	case models.SectionWill:
 		return limits.AllowWill
-	case "power_of_attorney":
+	case models.SectionPowerOfAttorney:
 		return limits.AllowPowerOfAttorney
-	case "health_care_directive":
+	case models.SectionHealthCareDirective:
 		return limits.AllowHealthCareDirective
+	case models.SectionPersonalProperty:
+		return limits.AllowPersonalProperty
+	case models.SectionNonProbate:
+		return limits.AllowNonProbate
+	case models.SectionFuneral:
+		return limits.AllowFuneral
+	case models.SectionContacts:
+		return limits.AllowContacts
 	default:
 		return false
 	}

@@ -99,13 +99,9 @@ func (d *Deps) CreateMember(w http.ResponseWriter, r *http.Request) {
 		d.internalError(w, r, err, "failed to load plan limits")
 		return
 	}
-	if !memberRoleAllowedByPlan(limits, req.Role) {
-		writeError(w, http.StatusForbidden, "your current plan does not include this permission role")
-		return
-	}
 	for _, permission := range req.Permissions {
-		if !memberRoleAllowedByPlan(limits, permission.PermissionRole) {
-			writeError(w, http.StatusForbidden, "your current plan does not include this permission role")
+		if !memberPermissionAllowedByPlan(limits, permission) {
+			writeError(w, http.StatusForbidden, "your current plan does not include this permission")
 			return
 		}
 	}
@@ -167,24 +163,34 @@ func (d *Deps) CreateMember(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, m)
 }
 
-func memberRoleAllowedByPlan(limits models.PlanLimits, role string) bool {
-	switch role {
-	case models.RoleSteward:
-		return limits.AllowWill && limits.MaxAuthorizedPeople > 0
-	case models.RoleSuccessor:
-		return limits.AllowWill && limits.MaxAuthorizedPeople > 0
-	case models.RolePOAAgent:
-		return limits.AllowPowerOfAttorney && limits.MaxAuthorizedPeople > 0
-	case models.RoleHealthCareProxy:
-		return limits.AllowHealthCareDirective && limits.MaxAuthorizedPeople > 0
-	default:
+// memberPermissionAllowedByPlan gates a single permission by the plan's access
+// to that permission's section, plus the shared people-count limit. This is
+// section-aware, so a steward permission on the personal-property list is
+// checked against allow_personal_property rather than allow_will.
+func memberPermissionAllowedByPlan(limits models.PlanLimits, permission models.MemberPermission) bool {
+	if limits.MaxAuthorizedPeople <= 0 {
 		return false
 	}
+	return documentAllowedByPlan(limits, permission.DocumentType)
+}
+
+// stewardSuccessorSection reports whether a section uses the generic
+// steward(now)/successor(after-death) access model — the will and the two
+// list sections. POA and health-care directives use their own roles instead.
+func stewardSuccessorSection(section string) bool {
+	switch section {
+	case models.SectionWill, models.SectionPersonalProperty, models.SectionNonProbate,
+		models.SectionFuneral, models.SectionContacts:
+		return true
+	}
+	return false
 }
 
 func validateMemberPermissions(permissions []models.MemberPermission) string {
 	seen := map[string]bool{}
-	willRole := ""
+	// Per section, track whether steward or successor was chosen — a section
+	// can be granted one or the other, not both.
+	sectionRole := map[string]string{}
 	for _, permission := range permissions {
 		key := permission.DocumentType + ":" + permission.PermissionRole
 		if seen[key] {
@@ -194,25 +200,25 @@ func validateMemberPermissions(permissions []models.MemberPermission) string {
 
 		switch permission.PermissionRole {
 		case models.RoleSteward, models.RoleSuccessor:
-			if permission.DocumentType != "will" {
-				return "will steward and successor permissions must be for the will"
+			if !stewardSuccessorSection(permission.DocumentType) {
+				return "steward and successor permissions are not available for this document"
 			}
 			if permission.PermissionRole == models.RoleSteward && permission.AccessTiming != models.AccessNow {
-				return "will steward access must be available now"
+				return "steward access must be available now"
 			}
 			if permission.PermissionRole == models.RoleSuccessor && permission.AccessTiming != models.AccessAfterDeath {
-				return "will successor access must be after death"
+				return "successor access must be after death"
 			}
-			if willRole != "" && willRole != permission.PermissionRole {
-				return "choose either will steward or will successor, not both"
+			if prior, ok := sectionRole[permission.DocumentType]; ok && prior != permission.PermissionRole {
+				return "choose either steward or successor for a section, not both"
 			}
-			willRole = permission.PermissionRole
+			sectionRole[permission.DocumentType] = permission.PermissionRole
 		case models.RolePOAAgent:
-			if permission.DocumentType != "power_of_attorney" {
+			if permission.DocumentType != models.SectionPowerOfAttorney {
 				return "power of attorney agent permission must be for power of attorney"
 			}
 		case models.RoleHealthCareProxy:
-			if permission.DocumentType != "health_care_directive" {
+			if permission.DocumentType != models.SectionHealthCareDirective {
 				return "health care proxy permission must be for health care directive"
 			}
 		default:
@@ -255,13 +261,9 @@ func (d *Deps) UpdateMember(w http.ResponseWriter, r *http.Request) {
 			d.internalError(w, r, err, "failed to load plan limits")
 			return
 		}
-		if req.Role != "" && !memberRoleAllowedByPlan(limits, req.Role) {
-			writeError(w, http.StatusForbidden, "your current plan does not include this permission role")
-			return
-		}
 		for _, permission := range req.Permissions {
-			if !memberRoleAllowedByPlan(limits, permission.PermissionRole) {
-				writeError(w, http.StatusForbidden, "your current plan does not include this permission role")
+			if !memberPermissionAllowedByPlan(limits, permission) {
+				writeError(w, http.StatusForbidden, "your current plan does not include this permission")
 				return
 			}
 		}
@@ -382,7 +384,10 @@ func normalizeMemberPermission(permission models.MemberPermission) models.Member
 	permission.PermissionRole = strings.TrimSpace(permission.PermissionRole)
 	permission.AccessTiming = strings.TrimSpace(permission.AccessTiming)
 
-	if permission.DocumentType == "will" {
+	// The will and the list sections share the steward(now)/successor(after
+	// death) model. Coerce the role/timing pair into one of those two shapes so
+	// a stray timing can never produce an inconsistent permission.
+	if stewardSuccessorSection(permission.DocumentType) {
 		if permission.AccessTiming == models.AccessAfterDeath ||
 			permission.PermissionRole == models.RoleSuccessor {
 			permission.PermissionRole = models.RoleSuccessor

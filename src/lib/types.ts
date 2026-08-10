@@ -15,6 +15,20 @@ export type DocumentType =
   | "power_of_attorney"
   | "health_care_directive";
 
+/**
+ * Every gate-able section of a vault. The three DocumentTypes above are
+ * singular documents (a will, a POA, a directive) inlined onto the vault
+ * row. The list/record sections below are backed by vault entries or a
+ * dedicated record but share the same access model — the permission engine
+ * gates them all the same way. Keep in sync with backend models.Section*.
+ */
+export type VaultSection =
+  | DocumentType
+  | "personal_property"
+  | "non_probate"
+  | "funeral"
+  | "contacts";
+
 export type AccessTiming = "now" | "after_death" | "incapacitated";
 
 /**
@@ -48,6 +62,10 @@ export interface PlanLimits {
   allowWill: boolean;
   allowPowerOfAttorney: boolean;
   allowHealthCareDirective: boolean;
+  allowPersonalProperty: boolean;
+  allowNonProbate: boolean;
+  allowFuneral: boolean;
+  allowContacts: boolean;
   active: boolean;
 }
 
@@ -97,7 +115,10 @@ export interface VaultMember {
 
 export interface MemberPermission {
   id?: string;
-  documentType: DocumentType;
+  // A permission can target any gate-able section, including the list
+  // sections (personal property, non-probate) whose steward/successor
+  // permissions were added in the list-section feature.
+  documentType: VaultSection;
   permissionRole: VaultRole;
   accessTiming: AccessTiming;
   hidden?: boolean;
@@ -140,6 +161,91 @@ export interface VaultDocument {
   updatedAt?: string | null;
 }
 
+/**
+ * The list sections use a shared "entry + beneficiaries" shape. `section`
+ * names which list an entry belongs to; `details` holds the section-specific
+ * fields (e.g. an asset type for non-probate).
+ */
+export type ListSection = "personal_property" | "non_probate" | "contacts";
+
+/** Roles an important contact can hold. */
+export type ContactRole =
+  | "attorney"
+  | "financial_advisor"
+  | "cpa"
+  | "funeral_director"
+  | "executor"
+  | "trustee"
+  | "family"
+  | "other";
+
+/** Kinds of non-probate asset an entry can represent. */
+export type NonProbateAssetType =
+  | "life_insurance"
+  | "pod_tod_account"
+  | "ira"
+  | "retirement_401k"
+  | "brokerage"
+  | "trust"
+  | "real_estate"
+  | "other";
+
+export interface VaultEntryBeneficiary {
+  id?: string;
+  name: string;
+  relationship?: string;
+  share?: string;
+  note?: string;
+  memberId?: string | null;
+  sortOrder?: number;
+}
+
+export interface VaultEntry {
+  id: string;
+  section: ListSection;
+  title: string;
+  details: Record<string, unknown>;
+  sortOrder: number;
+  beneficiaries: VaultEntryBeneficiary[];
+  createdAt: string | Date;
+  updatedAt: string | Date;
+}
+
+/** The owner's funeral & burial wishes — one record per vault. */
+export type FuneralDisposition =
+  | "burial"
+  | "cremation"
+  | "donation"
+  | "undecided"
+  | "";
+
+export interface FuneralWishes {
+  hasFuneral: boolean;
+  disposition: FuneralDisposition;
+  serviceWishes: string;
+  serviceLocation: string;
+  officiant: string;
+  readingsMusic: string;
+  prepaidProvider: string;
+  notes: string;
+  updatedAt?: string | null;
+}
+
+/**
+ * An uploaded copy of a document, stored server-side. Only returned to a
+ * caller who may read its section; the bytes are fetched through a
+ * permission-checked download endpoint, never a public URL.
+ */
+export interface VaultAttachment {
+  id: string;
+  section: VaultSection;
+  entryId?: string | null;
+  fileName: string;
+  contentType: string;
+  fileSize: number;
+  createdAt: string | Date;
+}
+
 export interface Vault {
   id: string;
   name: string;
@@ -152,6 +258,9 @@ export interface Vault {
   releasedAt?: string | null;
   will: Will;
   documents: VaultDocument[];
+  attachments: VaultAttachment[];
+  entries: VaultEntry[];
+  funeral: FuneralWishes;
   members: VaultMember[];
   createdAt: string | Date;
 }
@@ -168,8 +277,8 @@ export interface VaultSummary {
   accessTiming?: AccessTiming | null;
   permissions?: MemberPermission[];
   releasedAt?: string | null;
-  releasedDocuments?: DocumentType[];
-  recordedDocuments?: DocumentType[];
+  releasedDocuments?: VaultSection[];
+  recordedDocuments?: VaultSection[];
   createdAt: string | Date;
 }
 

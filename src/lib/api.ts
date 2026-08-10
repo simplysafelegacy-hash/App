@@ -16,18 +16,33 @@ import type {
   AdminReleaseRequest,
   Notification,
   DocumentType,
+  FuneralWishes,
+  ListSection,
   PlanLimits,
   ReleaseRequest,
   SubscriptionPlan,
   User,
   Vault,
   MemberPermission,
+  VaultAttachment,
   VaultDocument,
+  VaultEntry,
+  VaultEntryBeneficiary,
   VaultMember,
   VaultRole,
+  VaultSection,
   VaultSummary,
   Will,
 } from "./types";
+
+/** Payload for creating or updating a list entry. */
+export interface EntryInput {
+  section: ListSection;
+  title: string;
+  details: Record<string, unknown>;
+  sortOrder?: number;
+  beneficiaries: VaultEntryBeneficiary[];
+}
 
 const API_URL = import.meta.env.VITE_API_URL ?? "/api";
 
@@ -112,13 +127,16 @@ async function upload<T>(path: string, body: FormData): Promise<T> {
   return data as T;
 }
 
-async function download(path: string): Promise<Blob> {
+async function download(
+  path: string,
+  opts: { vaultScoped?: boolean } = {},
+): Promise<Blob> {
   const token = localStorage.getItem("simplysafelegacy.token");
-  const res = await fetch(`${API_URL}${path}`, {
-    headers: {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-  });
+  const headers: Record<string, string> = {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+  if (opts.vaultScoped && activeVaultId) headers["X-Vault-Id"] = activeVaultId;
+  const res = await fetch(`${API_URL}${path}`, { headers });
   if (!res.ok) {
     const text = await res.text();
     let data: { error?: string; detail?: string } | null = null;
@@ -272,6 +290,67 @@ export const api = {
       data.files.forEach((file) => form.append("files", file));
       return upload<ReleaseRequest>("/vault/release-requests", form);
     },
+  },
+
+  attachments: {
+    list: () =>
+      request<VaultAttachment[]>("/vault/attachments", { vaultScoped: true }),
+    upload: (section: VaultSection, file: File) => {
+      const form = new FormData();
+      form.set("section", section);
+      form.append("files", file);
+      return upload<VaultAttachment>("/vault/attachments", form);
+    },
+    download: (id: string) =>
+      download(`/vault/attachments/${id}/download`, { vaultScoped: true }),
+    remove: (id: string) =>
+      request<void>(`/vault/attachments/${id}`, {
+        method: "DELETE",
+        vaultScoped: true,
+      }),
+  },
+
+  entries: {
+    list: (section: ListSection) =>
+      request<VaultEntry[]>(
+        `/vault/entries?section=${encodeURIComponent(section)}`,
+        { vaultScoped: true },
+      ),
+    create: (data: EntryInput) =>
+      request<VaultEntry>("/vault/entries", {
+        method: "POST",
+        body: data as unknown as Json,
+        vaultScoped: true,
+      }),
+    update: (id: string, data: EntryInput) =>
+      request<VaultEntry>(`/vault/entries/${id}`, {
+        method: "PUT",
+        body: data as unknown as Json,
+        vaultScoped: true,
+      }),
+    remove: (id: string) =>
+      request<void>(`/vault/entries/${id}`, {
+        method: "DELETE",
+        vaultScoped: true,
+      }),
+  },
+
+  funeral: {
+    update: (data: {
+      hasFuneral: boolean;
+      disposition?: string;
+      serviceWishes?: string;
+      serviceLocation?: string;
+      officiant?: string;
+      readingsMusic?: string;
+      prepaidProvider?: string;
+      notes?: string;
+    }) =>
+      request<FuneralWishes>("/vault/funeral", {
+        method: "PUT",
+        body: data,
+        vaultScoped: true,
+      }),
   },
 
   admin: {

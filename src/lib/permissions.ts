@@ -1,4 +1,4 @@
-import type { AccessTiming, DocumentType, MemberPermission, PlanLimits, Vault, VaultRole, VaultSummary } from "./types";
+import type { AccessTiming, ContactRole, DocumentType, MemberPermission, NonProbateAssetType, PlanLimits, Vault, VaultRole, VaultSection, VaultSummary } from "./types";
 
 /**
  * Permission predicates derived from a user's role on a vault and that
@@ -68,14 +68,21 @@ export function permissionsForVault(
 function permissionCanRead(
   permission: MemberPermission,
   vaultReleased: boolean,
-  releasedDocuments: DocumentType[],
+  releasedDocuments: VaultSection[],
 ) {
   if (permission.hidden) {
     return false;
   }
-  if (permission.permissionRole === "steward") return permission.documentType === "will";
+  const released =
+    vaultReleased || releasedDocuments.includes(permission.documentType);
+  // steward/successor are generic "read now" / "read after release" roles that
+  // apply to any section. POA / health-care-proxy follow their own timing.
+  if (permission.permissionRole === "successor") return released;
+  if (permission.permissionRole === "steward") {
+    return permission.accessTiming === "now" || released;
+  }
   if (permission.accessTiming === "now") return true;
-  return vaultReleased || releasedDocuments.includes(permission.documentType);
+  return released;
 }
 
 export const roleLabel: Record<VaultRole, string> = {
@@ -116,17 +123,57 @@ export const documentLabel: Record<DocumentType, string> = {
   health_care_directive: "Health care directive",
 };
 
+export const sectionLabel: Record<VaultSection, string> = {
+  will: "Will",
+  power_of_attorney: "Power of attorney",
+  health_care_directive: "Health care directive",
+  personal_property: "Personal property",
+  non_probate: "Non-probate assets",
+  funeral: "Funeral & burial",
+  contacts: "Important contacts",
+};
+
+export const contactRoleLabel: Record<ContactRole, string> = {
+  attorney: "Attorney",
+  financial_advisor: "Financial advisor",
+  cpa: "CPA / accountant",
+  funeral_director: "Funeral director",
+  executor: "Executor",
+  trustee: "Trustee",
+  family: "Family",
+  other: "Other",
+};
+
+export const nonProbateAssetLabel: Record<NonProbateAssetType, string> = {
+  life_insurance: "Life insurance policy",
+  pod_tod_account: "POD / TOD account",
+  ira: "IRA",
+  retirement_401k: "401(k) / retirement plan",
+  brokerage: "Brokerage account",
+  trust: "Trust",
+  real_estate: "Real estate (survivorship / joint)",
+  other: "Other",
+};
+
 export function planAllowsDocument(
   limits: PlanLimits | null | undefined,
-  documentType: DocumentType,
+  section: VaultSection,
 ): boolean {
   if (!limits) return true;
-  switch (documentType) {
+  switch (section) {
     case "will":
       return limits.allowWill;
     case "power_of_attorney":
       return limits.allowPowerOfAttorney;
     case "health_care_directive":
       return limits.allowHealthCareDirective;
+    case "personal_property":
+      return limits.allowPersonalProperty;
+    case "non_probate":
+      return limits.allowNonProbate;
+    case "funeral":
+      return limits.allowFuneral;
+    case "contacts":
+      return limits.allowContacts;
   }
 }

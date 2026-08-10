@@ -19,6 +19,10 @@ const fallbackPlans: PlanLimits[] = [
     allowWill: true,
     allowPowerOfAttorney: false,
     allowHealthCareDirective: false,
+    allowPersonalProperty: true,
+    allowNonProbate: false,
+    allowFuneral: true,
+    allowContacts: true,
     active: true,
   },
   {
@@ -31,6 +35,10 @@ const fallbackPlans: PlanLimits[] = [
     allowWill: true,
     allowPowerOfAttorney: true,
     allowHealthCareDirective: true,
+    allowPersonalProperty: true,
+    allowNonProbate: true,
+    allowFuneral: true,
+    allowContacts: true,
     active: true,
   },
   {
@@ -43,6 +51,10 @@ const fallbackPlans: PlanLimits[] = [
     allowWill: true,
     allowPowerOfAttorney: true,
     allowHealthCareDirective: true,
+    allowPersonalProperty: true,
+    allowNonProbate: true,
+    allowFuneral: true,
+    allowContacts: true,
     active: true,
   },
 ];

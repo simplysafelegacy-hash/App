@@ -13,16 +13,20 @@ import {
   DocumentType,
   MemberPermission,
   ReleaseRequest,
+  FuneralWishes,
   SubscriptionPlan,
   User,
   Vault,
+  VaultAttachment,
   VaultDocument,
+  VaultEntry,
   VaultMember,
   VaultRole,
+  VaultSection,
   VaultSummary,
   Will,
 } from "@/lib/types";
-import { api } from "@/lib/api";
+import { api, type EntryInput } from "@/lib/api";
 import { permissionsForVault, type Permissions } from "@/lib/permissions";
 import {
   mockNotifications,
@@ -97,6 +101,31 @@ interface AppContextType {
     note?: string;
     files: File[];
   }) => Promise<ReleaseRequest | null>;
+
+  // Document copies (uploaded files attached to a section).
+  uploadAttachment: (
+    section: VaultSection,
+    file: File,
+  ) => Promise<VaultAttachment | null>;
+  removeAttachment: (id: string) => Promise<void>;
+  downloadAttachment: (attachment: VaultAttachment) => Promise<void>;
+
+  // List entries (personal property, non-probate assets, contacts).
+  addEntry: (data: EntryInput) => Promise<VaultEntry | null>;
+  updateEntry: (id: string, data: EntryInput) => Promise<VaultEntry | null>;
+  removeEntry: (id: string) => Promise<void>;
+
+  // Funeral & burial wishes (a single record per vault).
+  updateFuneralWishes: (data: {
+    hasFuneral: boolean;
+    disposition?: string;
+    serviceWishes?: string;
+    serviceLocation?: string;
+    officiant?: string;
+    readingsMusic?: string;
+    prepaidProvider?: string;
+    notes?: string;
+  }) => Promise<void>;
 
   // Members
   addMember: (m: {
@@ -343,6 +372,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           releasedAt: null,
           will: { hasWill: false, locationType: "", locationAddress: "", locationDescription: "" },
           documents: emptyDocuments(),
+          attachments: [],
+          entries: [],
+          funeral: emptyFuneral(),
           members: [
             {
               id: `member-${Date.now()}`,
@@ -628,6 +660,166 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [vault],
   );
 
+  const uploadAttachment = useCallback(
+    async (
+      section: VaultSection,
+      file: File,
+    ): Promise<VaultAttachment | null> => {
+      if (!vault) return null;
+      const created: VaultAttachment = DEMO_MODE
+        ? {
+            id: `attachment-${Date.now()}`,
+            section,
+            entryId: null,
+            fileName: file.name,
+            contentType: file.type || "application/octet-stream",
+            fileSize: file.size,
+            createdAt: new Date().toISOString(),
+          }
+        : await api.attachments.upload(section, file);
+      setVault({
+        ...vault,
+        attachments: [created, ...(vault.attachments ?? [])],
+      });
+      pushNotification({
+        type: "document_updated",
+        message: `Copy uploaded for ${section.replace(/_/g, " ")}`,
+        vaultId: vault.id,
+      });
+      return created;
+    },
+    [vault, pushNotification],
+  );
+
+  const removeAttachment = useCallback(
+    async (id: string) => {
+      if (!vault) return;
+      if (!DEMO_MODE) await api.attachments.remove(id);
+      setVault({
+        ...vault,
+        attachments: (vault.attachments ?? []).filter((a) => a.id !== id),
+      });
+    },
+    [vault],
+  );
+
+  const downloadAttachment = useCallback(
+    async (attachment: VaultAttachment) => {
+      if (DEMO_MODE) {
+        window.alert(
+          `Demo mode: would download "${attachment.fileName}".`,
+        );
+        return;
+      }
+      const blob = await api.attachments.download(attachment.id);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = attachment.fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    },
+    [],
+  );
+
+  const addEntry = useCallback(
+    async (data: EntryInput): Promise<VaultEntry | null> => {
+      if (!vault) return null;
+      const created: VaultEntry = DEMO_MODE
+        ? {
+            id: `entry-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            section: data.section,
+            title: data.title,
+            details: data.details ?? {},
+            sortOrder: data.sortOrder ?? vault.entries.length,
+            beneficiaries: (data.beneficiaries ?? [])
+              .filter((b) => b.name.trim() !== "")
+              .map((b, i) => ({ ...b, id: `ben-${Date.now()}-${i}` })),
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          }
+        : await api.entries.create(data);
+      setVault({ ...vault, entries: [...vault.entries, created] });
+      return created;
+    },
+    [vault],
+  );
+
+  const updateEntry = useCallback(
+    async (id: string, data: EntryInput): Promise<VaultEntry | null> => {
+      if (!vault) return null;
+      const existing = vault.entries.find((e) => e.id === id) ?? null;
+      const updated: VaultEntry = DEMO_MODE
+        ? {
+            id,
+            section: data.section,
+            title: data.title,
+            details: data.details ?? {},
+            sortOrder: data.sortOrder ?? existing?.sortOrder ?? 0,
+            beneficiaries: (data.beneficiaries ?? [])
+              .filter((b) => b.name.trim() !== "")
+              .map((b, i) => ({ ...b, id: b.id ?? `ben-${Date.now()}-${i}` })),
+            createdAt: existing?.createdAt ?? new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          }
+        : await api.entries.update(id, data);
+      setVault({
+        ...vault,
+        entries: vault.entries.map((e) => (e.id === id ? updated : e)),
+      });
+      return updated;
+    },
+    [vault],
+  );
+
+  const removeEntry = useCallback(
+    async (id: string) => {
+      if (!vault) return;
+      if (!DEMO_MODE) await api.entries.remove(id);
+      setVault({
+        ...vault,
+        entries: vault.entries.filter((e) => e.id !== id),
+      });
+    },
+    [vault],
+  );
+
+  const updateFuneralWishes = useCallback(
+    async (data: {
+      hasFuneral: boolean;
+      disposition?: string;
+      serviceWishes?: string;
+      serviceLocation?: string;
+      officiant?: string;
+      readingsMusic?: string;
+      prepaidProvider?: string;
+      notes?: string;
+    }) => {
+      if (!vault) return;
+      const next: FuneralWishes = {
+        hasFuneral: data.hasFuneral,
+        disposition: (data.hasFuneral ? data.disposition ?? "" : "") as FuneralWishes["disposition"],
+        serviceWishes: data.hasFuneral ? data.serviceWishes ?? "" : "",
+        serviceLocation: data.hasFuneral ? data.serviceLocation ?? "" : "",
+        officiant: data.hasFuneral ? data.officiant ?? "" : "",
+        readingsMusic: data.hasFuneral ? data.readingsMusic ?? "" : "",
+        prepaidProvider: data.hasFuneral ? data.prepaidProvider ?? "" : "",
+        notes: data.hasFuneral ? data.notes ?? "" : "",
+        updatedAt: data.hasFuneral ? new Date().toISOString() : null,
+      };
+      const saved = DEMO_MODE ? next : await api.funeral.update(data);
+      setVault({ ...vault, funeral: saved });
+      pushNotification({
+        type: "document_updated",
+        message: "Funeral wishes updated",
+        vaultId: vault.id,
+      });
+    },
+    [vault, pushNotification],
+  );
+
   const removeMember = useCallback(
     async (id: string) => {
       if (!vault) return;
@@ -691,6 +883,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       updateWill,
       updateDocument,
       submitReleaseRequest,
+      uploadAttachment,
+      removeAttachment,
+      downloadAttachment,
+      addEntry,
+      updateEntry,
+      removeEntry,
+      updateFuneralWishes,
       addMember,
       updateMember,
       removeMember,
@@ -721,6 +920,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       updateWill,
       updateDocument,
       submitReleaseRequest,
+      uploadAttachment,
+      removeAttachment,
+      downloadAttachment,
+      addEntry,
+      updateEntry,
+      removeEntry,
+      updateFuneralWishes,
       addMember,
       updateMember,
       removeMember,
@@ -747,6 +953,19 @@ function emptyDocuments(): VaultDocument[] {
     locationAddress: "",
     locationDescription: "",
   }));
+}
+
+function emptyFuneral(): FuneralWishes {
+  return {
+    hasFuneral: false,
+    disposition: "",
+    serviceWishes: "",
+    serviceLocation: "",
+    officiant: "",
+    readingsMusic: "",
+    prepaidProvider: "",
+    notes: "",
+  };
 }
 
 function upsertDocument(
