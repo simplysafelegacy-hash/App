@@ -1,9 +1,43 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ComponentType } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useApp } from "@/context/AppContext";
 import { SealMark } from "@/components/SealMark";
 import { VaultSwitcher, vaultAccessLabel, vaultDisplayName } from "@/components/VaultSwitcher";
-import { Bell, Check, ChevronDown, LogOut, Menu, Settings, User as UserIcon, X } from "lucide-react";
+import type { Permissions } from "@/lib/permissions";
+import type { User } from "@/lib/types";
+import { Bell, ChevronDown, CreditCard, LayoutGrid, LogOut, Menu, Settings, ShieldCheck, Users, X, type LucideProps } from "lucide-react";
+
+interface NavItem {
+  to: string;
+  label: string;
+  icon: ComponentType<LucideProps>;
+  show: boolean;
+}
+
+/**
+ * The single source of truth for the authenticated navigation. Every surface —
+ * the desktop bar, the mobile menu, and the avatar dropdown — is derived from
+ * this list, so a link can never appear in one place but be missing from
+ * another (the steward "only Settings" bug came from three lists disagreeing).
+ *
+ * Visibility rules live here, once:
+ *  - Vault:    anyone who can reach the dashboard for a vault — owners, readers
+ *              (steward / released successor / agent), and sealed members who
+ *              land on the release view.
+ *  - People/Plan: owner-only.
+ *  - Settings: always.
+ *  - Admin:    admins only.
+ */
+function buildNavItems(permissions: Permissions, user: User | null): NavItem[] {
+  const canSeeVault = permissions.canRead || permissions.isSealed;
+  return [
+    { to: "/dashboard", label: "Vault", icon: LayoutGrid, show: canSeeVault },
+    { to: "/members", label: "People", icon: Users, show: permissions.canModify },
+    { to: "/plans", label: "Plan", icon: CreditCard, show: permissions.canModify },
+    { to: "/settings", label: "Settings", icon: Settings, show: true },
+    { to: "/admin/release-requests", label: "Admin review", icon: ShieldCheck, show: Boolean(user?.isAdmin) },
+  ].filter((item) => item.show);
+}
 
 export function Header() {
   const {
@@ -14,13 +48,7 @@ export function Header() {
     markNotificationRead,
     permissions,
   } = useApp();
-  const authedLinks = [
-    { to: "/dashboard", label: "Vault", show: permissions.canModify },
-    { to: "/members", label: "People", show: permissions.canModify },
-    { to: "/plans", label: "Plan", show: permissions.canModify },
-    { to: "/settings", label: "Settings", show: true },
-    { to: "/admin/release-requests", label: "Admin", show: Boolean(currentUser?.isAdmin) },
-  ].filter((l) => l.show);
+  const navItems = buildNavItems(permissions, currentUser);
   const [menuOpen, setMenuOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -55,10 +83,10 @@ export function Header() {
         {isAuthenticated ? (
           <>
             <nav className="hidden md:flex items-center gap-6">
-              {authedLinks.map((l) => (
+              {navItems.map((item) => (
                 <NavLink
-                  key={l.to}
-                  to={l.to}
+                  key={item.to}
+                  to={item.to}
                   className={({ isActive }) =>
                     `text-sm transition-colors py-2 ${
                       isActive
@@ -67,7 +95,7 @@ export function Header() {
                     }`
                   }
                 >
-                  {l.label}
+                  {item.label}
                 </NavLink>
               ))}
             </nav>
@@ -153,29 +181,16 @@ export function Header() {
                         {currentUser?.email}
                       </p>
                     </div>
-                    <button
-                      onClick={() => navigate("/dashboard")}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-foreground hover:bg-muted transition-colors text-left"
-                    >
-                      <UserIcon size={16} strokeWidth={1.5} />
-                      Vault
-                    </button>
-                    <button
-                      onClick={() => navigate("/settings")}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-foreground hover:bg-muted transition-colors text-left"
-                    >
-                      <Settings size={16} strokeWidth={1.5} />
-                      Settings
-                    </button>
-                    {currentUser?.isAdmin && (
-                      <button
-                        onClick={() => navigate("/admin/release-requests")}
+                    {navItems.map((item) => (
+                      <Link
+                        key={item.to}
+                        to={item.to}
                         className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-foreground hover:bg-muted transition-colors text-left"
                       >
-                        <Check size={16} strokeWidth={1.5} />
-                        Admin review
-                      </button>
-                    )}
+                        <item.icon size={16} strokeWidth={1.5} />
+                        {item.label}
+                      </Link>
+                    ))}
                     <button
                       onClick={() => {
                         logout();
@@ -229,13 +244,14 @@ export function Header() {
             {isAuthenticated ? (
               <>
                 <MobileVaultPicker />
-                {authedLinks.map((l) => (
+                {navItems.map((item) => (
                   <Link
-                    key={l.to}
-                    to={l.to}
-                    className="text-lg text-foreground py-1"
+                    key={item.to}
+                    to={item.to}
+                    className="flex items-center gap-3 text-lg text-foreground py-1"
                   >
-                    {l.label}
+                    <item.icon size={20} strokeWidth={1.5} />
+                    {item.label}
                   </Link>
                 ))}
                 <div className="border-t border-border my-2" />

@@ -7,6 +7,7 @@ import { AppProvider } from "@/context/AppContext";
 import Landing from "./pages/Landing";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
+import ForgotPassword from "./pages/ForgotPassword";
 import CreateVault from "./pages/CreateVault";
 import Dashboard from "./pages/Dashboard";
 import Members from "./pages/Members";
@@ -28,6 +29,7 @@ const App = () => (
             <Route path="/" element={<Landing />} />
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/create-vault" element={<CreateVault />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/members" element={<Members />} />

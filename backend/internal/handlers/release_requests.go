@@ -17,6 +17,13 @@ import (
 
 const maxReleaseUploadBytes = 25 << 20
 
+// A person may submit at most this many release requests per document, to keep
+// admin review from being spammed. Counted per requesting member + document.
+const maxReleaseRequestsPerDocument = 3
+
+// maxReleaseFiles is the number of proof files allowed on a single submission.
+const maxReleaseFiles = 3
+
 func (d *Deps) CreateReleaseRequest(w http.ResponseWriter, r *http.Request) {
 	v, ok := requireVault(w, r)
 	if !ok {
@@ -41,13 +48,22 @@ func (d *Deps) CreateReleaseRequest(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "you are not allowed to request release for this document")
 		return
 	}
+	used, err := d.countMemberReleaseRequests(r.Context(), v.VaultID, v.MemberID, documentType)
+	if err != nil {
+		d.internalError(w, r, err, "failed to count release requests")
+		return
+	}
+	if used >= maxReleaseRequestsPerDocument {
+		writeError(w, http.StatusForbidden, fmt.Sprintf("you have used all %d submissions for this document", maxReleaseRequestsPerDocument))
+		return
+	}
 	files := r.MultipartForm.File["files"]
 	if len(files) == 0 {
 		writeError(w, http.StatusBadRequest, "at least one file is required")
 		return
 	}
-	if (documentType == "will" && len(files) > 2) || (documentType != "will" && len(files) > 2) {
-		writeError(w, http.StatusBadRequest, "upload one or two files")
+	if len(files) > maxReleaseFiles {
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("upload up to %d files", maxReleaseFiles))
 		return
 	}
 	if d.Storage.Bucket == "" {
@@ -197,6 +213,19 @@ func uploadToGCS(ctx context.Context, bucket, objectName, contentType string, bo
 		Media(body, googleapi.ContentType(contentType)).
 		Do()
 	return err
+}
+
+// countMemberReleaseRequests returns how many release requests a member has
+// already submitted for a document on a vault, used to enforce the per-document
+// submission cap.
+func (d *Deps) countMemberReleaseRequests(ctx context.Context, vaultID, memberID, documentType string) (int, error) {
+	var n int
+	err := d.DB.QueryRow(ctx, `
+		SELECT count(*)
+		FROM release_requests
+		WHERE vault_id = $1 AND requester_id = $2 AND document_type = $3
+	`, vaultID, memberID, documentType).Scan(&n)
+	return n, err
 }
 
 func listReleaseRequestFiles(ctx context.Context, d *Deps, requestID string) ([]models.ReleaseRequestFile, error) {

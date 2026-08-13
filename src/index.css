@@ -3,36 +3,45 @@
 @tailwind utilities;
 
 @layer base {
+  /* Readability-first palette for an older audience: warm near-black text on
+     warm near-white, green demoted from field colour to a restrained accent,
+     secondary text darkened to ~6.8:1 contrast, stronger borders. Larger base
+     type is set on `body` below. See dashboard-readability-redesign. */
   :root {
-    --background: 42 24% 97%;
-    --foreground: 155 30% 12%;
+    --background: 45 29% 97%;   /* warm off-white (#FAF9F6) */
+    --foreground: 160 18% 11%;  /* near-black with a faint green cast */
 
-    --card: 42 35% 99%;
-    --card-foreground: 155 30% 12%;
+    --card: 45 33% 99%;
+    --card-foreground: 160 18% 11%;
     --popover: 0 0% 100%;
-    --popover-foreground: 155 30% 12%;
+    --popover-foreground: 160 18% 11%;
 
-    --primary: 155 40% 18%;
-    --primary-soft: 155 30% 28%;
-    --primary-foreground: 40 35% 96%;
+    --primary: 160 47% 17%;     /* deep forest green (#173F32) */
+    --primary-soft: 160 43% 22%;
+    --primary-foreground: 45 33% 98%;
 
-    --secondary: 95 18% 88%;
-    --secondary-foreground: 155 30% 12%;
+    --secondary: 45 18% 91%;
+    --secondary-foreground: 160 18% 15%;
 
-    --muted: 42 18% 94%;
-    --muted-foreground: 155 10% 40%;
+    --muted: 45 18% 93%;
+    --muted-foreground: 155 8% 34%;
 
-    --accent: 38 55% 55%;
-    --accent-foreground: 155 30% 12%;
+    --accent: 32 58% 45%;
+    --accent-foreground: 45 33% 98%;
 
-    --destructive: 0 60% 45%;
-    --destructive-foreground: 40 35% 96%;
+    --destructive: 4 62% 42%;
+    --destructive-foreground: 45 33% 98%;
 
-    --border: 155 12% 86%;
-    --input: 155 12% 82%;
-    --ring: 155 40% 18%;
+    --border: 42 13% 80%;
+    --input: 42 13% 74%;
+    --ring: 160 47% 24%;
 
-    --radius: 0.375rem;
+    --radius: 0.6875rem;  /* ~11px — softer, per redesign brief */
+
+    /* Semantic document status — clear, not saturated. Not a brand accent. */
+    --status-done: 160 45% 24%;
+    --status-pending: 155 8% 40%;
+    --status-attention: 32 58% 40%;
   }
 
   * {
@@ -50,8 +59,8 @@
     color: hsl(var(--foreground));
     font-family: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
       sans-serif;
-    font-size: 15px;
-    line-height: 1.5;
+    font-size: 17px; /* up from 15 — easier reading for an older audience */
+    line-height: 1.6;
   }
 
   h1,
@@ -81,8 +90,9 @@
   /* Buttons --------------------------------------------------------- */
 
   .btn {
-    @apply inline-flex items-center justify-center gap-2 px-4 font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
-    min-height: 40px;
+    @apply inline-flex items-center justify-center gap-2 px-5 font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+    font-size: 16px;
+    min-height: 48px; /* larger tap target for an older audience */
     border-radius: var(--radius);
   }
 
@@ -123,9 +133,9 @@
     @apply w-full bg-card text-foreground placeholder:text-muted-foreground transition-colors;
     border: 1px solid hsl(var(--input));
     border-radius: var(--radius);
-    padding: 9px 11px;
-    font-size: 14px;
-    min-height: 40px;
+    padding: 11px 13px;
+    font-size: 16px;
+    min-height: 48px;
   }
   .field:focus {
     outline: 2px solid hsl(var(--ring));
@@ -134,7 +144,7 @@
   }
 
   .field-label {
-    @apply block text-xs font-medium text-muted-foreground mb-1.5;
+    @apply block text-sm font-semibold text-muted-foreground mb-1.5;
   }
 
   .field-hint {
@@ -147,7 +157,7 @@
     @apply bg-card;
     border: 1px solid hsl(var(--border));
     border-radius: var(--radius);
-    box-shadow: 0 1px 0 hsl(var(--foreground) / 0.03);
+    box-shadow: 0 1px 2px hsl(var(--foreground) / 0.05);
   }
 
   /* Links ----------------------------------------------------------- */

@@ -1,23 +1,40 @@
-import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Layout } from "@/components/layout/Layout";
+import { Zone } from "@/components/Zone";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useApp } from "@/context/AppContext";
 import type {
   AccessTiming,
   MemberPermission,
   PlanLimits,
   VaultMember,
-  VaultRole,
   VaultSection,
 } from "@/lib/types";
 import {
   accessTimingLabel,
   documentLabel,
   planAllowsDocument,
-  roleLabel,
   sectionLabel,
 } from "@/lib/permissions";
-import { ArrowLeft, Check, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Check, Pencil, Plus, Trash2 } from "lucide-react";
 
 export default function Members() {
   const {
@@ -31,13 +48,31 @@ export default function Members() {
     currentUser,
   } = useApp();
   const navigate = useNavigate();
-  const formRef = useRef<HTMLElement>(null);
   const [draftName, setDraftName] = useState("");
   const [draftEmail, setDraftEmail] = useState("");
   const [draftDateOfBirth, setDraftDateOfBirth] = useState("");
   const [draftPermissions, setDraftPermissions] = useState<MemberPermission[]>(defaultDraftPermissions);
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
-  const [confirmRemove, setConfirmRemove] = useState<PermissionRemoval | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
+  const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
+
+  const resetForm = () => {
+    setDraftName("");
+    setDraftEmail("");
+    setDraftDateOfBirth("");
+    setDraftPermissions(defaultDraftPermissions());
+    setEditingMemberId(null);
+    setFormOpen(false);
+  };
+
+  const openAddForm = () => {
+    setEditingMemberId(null);
+    setDraftName("");
+    setDraftEmail("");
+    setDraftDateOfBirth("");
+    setDraftPermissions(defaultDraftPermissions());
+    setFormOpen(true);
+  };
 
   useEffect(() => {
     if (loading) return;
@@ -47,11 +82,12 @@ export default function Members() {
 
   if (!vault || !permissions.isOwner) return null;
 
-  const stewards = vault.members.filter((m) => hasPermissionRole(m, "steward"));
-  const successors = vault.members.filter((m) => hasPermissionRole(m, "successor"));
-  const poaAgents = vault.members.filter((m) => hasPermissionRole(m, "poa_agent"));
-  const healthCareProxies = vault.members.filter((m) => hasPermissionRole(m, "health_care_proxy"));
-  const authorizedCount = vault.members.filter((m) => m.role !== "owner").length;
+  // One entry per authorized person — a contacts-style list. Each person's
+  // cross-section access is shown as chips on their own card, so nobody appears
+  // more than once (the old by-section grouping listed a person once per
+  // section they touched).
+  const authorizedPeople = vault.members.filter((m) => m.role !== "owner");
+  const authorizedCount = authorizedPeople.length;
   const maxAuthorizedPeople = currentUser?.planLimits?.maxAuthorizedPeople ?? Infinity;
   const atMemberLimit = authorizedCount >= maxAuthorizedPeople;
   const normalizedDraftPermissions = normalizeDraftPermissions(draftPermissions);
@@ -91,39 +127,16 @@ export default function Members() {
         permissions: normalizedDraftPermissions,
       });
     }
-    setDraftName("");
-    setDraftEmail("");
-    setDraftDateOfBirth("");
-    setDraftPermissions(defaultDraftPermissions());
-    setEditingMemberId(null);
+    resetForm();
   };
 
   const memberToRemove =
-    vault.members.find((m) => m.id === confirmRemove?.memberId) ?? null;
-  const permissionToRemove =
-    memberToRemove && confirmRemove
-      ? memberToRemove.permissions?.find((p) => p.permissionRole === confirmRemove.role) ?? null
-      : null;
-  const remainingPermissions =
-    memberToRemove && confirmRemove
-      ? permissionsWithoutRole(memberToRemove, confirmRemove.role)
-      : [];
-  const removingLastPermission = Boolean(memberToRemove && remainingPermissions.length === 0);
+    vault.members.find((m) => m.id === confirmRemoveId) ?? null;
 
-  const removePermissionOrMember = async () => {
-    if (!confirmRemove || !memberToRemove) return;
-    if (remainingPermissions.length === 0) {
-      await removeMember(confirmRemove.memberId);
-      setConfirmRemove(null);
-      return;
-    }
-    const nextPrimary = primaryPermissionFrom(remainingPermissions);
-    await updateMember(confirmRemove.memberId, {
-      name: memberToRemove.name,
-      role: nextPrimary?.permissionRole ?? memberToRemove.role,
-      permissions: remainingPermissions,
-    });
-    setConfirmRemove(null);
+  const removePerson = async () => {
+    if (!memberToRemove) return;
+    await removeMember(memberToRemove.id);
+    setConfirmRemoveId(null);
   };
 
   const startEdit = (member: VaultMember) => {
@@ -132,13 +145,7 @@ export default function Members() {
     setDraftEmail(member.email);
     setDraftDateOfBirth(member.dateOfBirth?.slice(0, 10) ?? "");
     setDraftPermissions(member.permissions?.length ? normalizeDraftPermissions(member.permissions) : []);
-    window.requestAnimationFrame(() => {
-      const top =
-        (formRef.current?.getBoundingClientRect().top ?? 0) +
-        window.scrollY -
-        112;
-      window.scrollTo({ top: Math.max(top, 0), behavior: "smooth" });
-    });
+    setFormOpen(true);
   };
 
   return (
@@ -152,190 +159,210 @@ export default function Members() {
           Back to vault
         </button>
 
-        <header className="mb-7">
-          <h1 className="text-2xl md:text-3xl font-semibold mb-2">People</h1>
-          <p className="text-base text-muted-foreground max-w-2xl">
-            Add authorized people by document. Birthdays help match people
-            during manual release review.
-          </p>
+        <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-7">
+          <div>
+            <h1 className="text-3xl md:text-4xl font-semibold mb-2">People</h1>
+            <p className="text-lg text-muted-foreground max-w-2xl">
+              Choose who can see each part of your vault, and when. Birthdays
+              help match people during manual release review.
+            </p>
+          </div>
+          {Number.isFinite(maxAuthorizedPeople) && (
+            <div className="shrink-0 rounded-xl border border-border bg-card px-5 py-3 text-center">
+              <p className="text-2xl font-bold tnum leading-none">
+                {authorizedCount}
+                <span className="text-muted-foreground font-semibold">
+                  {" "}/ {maxAuthorizedPeople}
+                </span>
+              </p>
+              <p className="text-sm text-muted-foreground mt-1">
+                {maxAuthorizedPeople === 1 ? "person" : "people"} used
+              </p>
+            </div>
+          )}
         </header>
 
-        <section ref={formRef} className="card-surface p-5 md:p-6 mb-9">
-          <h2 className="text-lg font-semibold mb-1">
-            {editingMemberId ? "Edit permissions" : "Add authorized person"}
-          </h2>
-          <p className="text-sm text-muted-foreground mb-5">
-            Choose exactly what this person can access. Their overall vault
-            access is derived from these permissions.
-            {Number.isFinite(maxAuthorizedPeople) && (
-              <>
-                {" "}
-                Your plan allows {maxAuthorizedPeople} authorized{" "}
-                {maxAuthorizedPeople === 1 ? "person" : "people"}.
-              </>
-            )}
-          </p>
-          {atMemberLimit && (
-            <div className="border border-border bg-secondary/30 rounded-md p-4 mb-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <p className="text-sm text-muted-foreground">
+        {/* Add-person affordance. The add/edit form itself is a modal. */}
+        <div className="mb-9">
+          {atMemberLimit ? (
+            <div className="card-surface p-5">
+              <p className="text-base text-muted-foreground">
                 {maxAuthorizedPeople <= 0
                   ? "The Free plan lets you record your own will, but it does not include authorized people."
-                  : `You have reached the authorized person limit for the ${
+                  : `You've reached the authorized person limit for the ${
                       currentUser?.planLimits?.name ?? "current"
                     } plan.`}
               </p>
-              <Link to="/plans" className="btn-secondary !min-h-[36px] !text-sm shrink-0">
-                Choose a plan
-              </Link>
             </div>
-          )}
-
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
-            <div className="md:col-span-3">
-              <label className="field-label">Name</label>
-              <input
-                type="text"
-                placeholder="Michael Mitchell"
-                value={draftName}
-                onChange={(e) => setDraftName(e.target.value)}
-                className="field"
-              />
-            </div>
-            <div className="md:col-span-4">
-              <label className="field-label">Email</label>
-              <input
-                type="email"
-                placeholder="michael@example.com"
-                value={draftEmail}
-                onChange={(e) => setDraftEmail(e.target.value)}
-                className="field"
-              />
-            </div>
-            <div className="md:col-span-3">
-              <label className="field-label">Birthday</label>
-              <input
-                type="date"
-                value={draftDateOfBirth}
-                onChange={(e) => setDraftDateOfBirth(e.target.value)}
-                className="field"
-              />
-            </div>
-            <div className="md:col-span-12">
-              <PermissionPicker
-                permissions={draftPermissions}
-                planLimits={currentUser?.planLimits}
-                onChange={setDraftPermissions}
-              />
-            </div>
-          </div>
-
-          <div className="mt-6 pt-5 border-t border-border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <p className="text-sm text-muted-foreground">
-              {formBlocker ?? "Ready to save this person's permissions."}
-            </p>
+          ) : (
             <button
-              onClick={onAdd}
-              className="btn-primary sm:min-w-[180px]"
-              disabled={!canSubmit}
+              type="button"
+              onClick={openAddForm}
+              className="btn-secondary w-full border-dashed !min-h-[56px]"
             >
-              <Plus size={16} strokeWidth={1.75} />
-              {editingMemberId ? "Save changes" : "Add person"}
+              <Plus size={18} strokeWidth={1.75} />
+              Add authorized person
             </button>
-          </div>
-        </section>
+          )}
+        </div>
 
-        <DocumentSection
-          title="Will"
-          description="People connected to the will can be active stewards or successor recipients, but not both."
-          groups={[
-            {
-              title: "Stewards",
-              description: "Active access to will details.",
-              members: stewards,
-              role: "steward",
-            },
-            {
-              title: "Successors",
-              description: vault.releasedAt
-                ? "The will has been released — successors now have access."
-                : "Sealed until release is approved.",
-              members: successors,
-              role: "successor",
-            },
-          ]}
-          onEdit={startEdit}
-          onRemove={(memberId, role) => setConfirmRemove({ memberId, role })}
-        />
-
-        <div className="h-8" />
-
-        <Section
-          title="Power of Attorney Agents"
-          description="Access to power of attorney details now or after incapacity is verified."
-          members={poaAgents}
-          onEdit={startEdit}
-          role="poa_agent"
-          onRemove={(memberId, role) => setConfirmRemove({ memberId, role })}
-        />
-
-        <div className="h-8" />
-
-        <Section
-          title="Health Care Proxies"
-          description="Access to health care directive details now or after incapacity is verified."
-          members={healthCareProxies}
-          onEdit={startEdit}
-          role="health_care_proxy"
-          onRemove={(memberId, role) => setConfirmRemove({ memberId, role })}
-        />
+        <Zone title="Authorized people">
+          {authorizedPeople.length === 0 ? (
+            <div className="card-surface border-dashed p-8 text-center">
+              <p className="text-muted-foreground">
+                No one else has access to this vault yet.
+              </p>
+            </div>
+          ) : (
+            <ul className="space-y-3">
+              {authorizedPeople.map((member) => (
+                <PersonCard
+                  key={member.id}
+                  member={member}
+                  onEdit={() => startEdit(member)}
+                  onRemove={() => setConfirmRemoveId(member.id)}
+                />
+              ))}
+            </ul>
+          )}
+        </Zone>
       </div>
 
-      {confirmRemove && memberToRemove && (
-        <div
-          className="fixed inset-0 z-50 bg-foreground/30 flex items-center justify-center p-4"
-          onClick={() => setConfirmRemove(null)}
-        >
-          <div
-            className="card-surface max-w-md w-full p-6 bg-card"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="text-xl font-semibold mb-3">
-              {removingLastPermission
-                ? `Remove ${memberToRemove.name}?`
-                : `Remove ${roleLabel[confirmRemove.role]}?`}
-            </h3>
-            <p className="text-muted-foreground mb-6">
-              {removingLastPermission
-                ? "This is their last permission, so they will be removed from the vault."
-                : `${memberToRemove.name} will keep their other permissions. This removes only ${
-                    permissionToRemove ? permissionSummary(permissionToRemove) : roleLabel[confirmRemove.role]
-                  }.`}
+      {/* Add / edit a person's permissions — a focused modal so the vault
+          owner works on one person at a time without losing their place. */}
+      <Dialog
+        open={formOpen}
+        onOpenChange={(open) => {
+          if (!open) resetForm();
+        }}
+      >
+        <DialogContent className="card-surface rounded-xl sm:rounded-xl max-w-2xl max-h-[90vh] gap-0 overflow-hidden p-0 flex flex-col">
+          <DialogHeader className="px-6 pt-6 pb-4 text-left">
+            <DialogTitle className="text-xl">
+              {editingMemberId ? "Edit access" : "Add authorized person"}
+            </DialogTitle>
+            <DialogDescription className="text-base text-muted-foreground">
+              Choose exactly what this person can access. Their overall vault
+              access is derived from these permissions.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="overflow-y-auto px-6 py-2 space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="sm:col-span-2">
+                <label className="field-label">Name</label>
+                <input
+                  type="text"
+                  placeholder="Michael Mitchell"
+                  value={draftName}
+                  onChange={(e) => setDraftName(e.target.value)}
+                  className="field"
+                />
+              </div>
+              <div>
+                <label className="field-label">Email</label>
+                <input
+                  type="email"
+                  placeholder="michael@example.com"
+                  value={draftEmail}
+                  onChange={(e) => setDraftEmail(e.target.value)}
+                  className="field"
+                  disabled={Boolean(editingMemberId)}
+                />
+              </div>
+              <div>
+                <label className="field-label">Birthday</label>
+                <input
+                  type="date"
+                  value={draftDateOfBirth}
+                  onChange={(e) => setDraftDateOfBirth(e.target.value)}
+                  className="field"
+                  disabled={Boolean(editingMemberId)}
+                />
+              </div>
+            </div>
+
+            <PermissionPicker
+              permissions={draftPermissions}
+              planLimits={currentUser?.planLimits}
+              onChange={setDraftPermissions}
+            />
+          </div>
+
+          <DialogFooter className="px-6 py-4 border-t border-border flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3">
+            <p className="text-base text-muted-foreground">
+              {formBlocker ?? "Ready to save this person's permissions."}
             </p>
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={() => setConfirmRemove(null)}
-                className="btn-secondary"
-              >
-                Keep access
+            <div className="flex items-center gap-3 shrink-0">
+              <button onClick={resetForm} className="btn-secondary">
+                Cancel
               </button>
               <button
-                onClick={removePermissionOrMember}
-                className="btn-destructive"
+                onClick={onAdd}
+                className="btn-primary sm:min-w-[160px]"
+                disabled={!canSubmit}
               >
-                {removingLastPermission ? "Remove person" : "Remove permission"}
+                {editingMemberId ? (
+                  <>
+                    <Check size={16} strokeWidth={2} />
+                    Save changes
+                  </>
+                ) : (
+                  <>
+                    <Plus size={16} strokeWidth={1.75} />
+                    Add person
+                  </>
+                )}
               </button>
             </div>
-          </div>
-        </div>
-      )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog
+        open={Boolean(memberToRemove)}
+        onOpenChange={(open) => {
+          if (!open) setConfirmRemoveId(null);
+        }}
+      >
+        <AlertDialogContent className="card-surface rounded-xl sm:rounded-xl max-w-md gap-0 p-0 overflow-hidden">
+          {memberToRemove && (
+            <>
+              <AlertDialogHeader className="px-6 pt-6 pb-4 text-left">
+                <div className="flex items-start gap-3">
+                  <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+                    <Trash2 size={20} strokeWidth={1.75} />
+                  </span>
+                  <div>
+                    <AlertDialogTitle className="text-xl">
+                      Remove {memberToRemove.name}?
+                    </AlertDialogTitle>
+                    <AlertDialogDescription className="text-base text-muted-foreground mt-1.5">
+                      {memberToRemove.name} will lose all access to this vault.
+                      To change only some of their access instead, use Edit.
+                      This can't be undone.
+                    </AlertDialogDescription>
+                  </div>
+                </div>
+              </AlertDialogHeader>
+              <AlertDialogFooter className="px-6 py-4 border-t border-border flex-col-reverse sm:flex-row sm:justify-end gap-3">
+                <AlertDialogCancel className="btn-secondary mt-0">
+                  Keep access
+                </AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={removePerson}
+                  className="btn-destructive"
+                >
+                  Remove person
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </>
+          )}
+        </AlertDialogContent>
+      </AlertDialog>
     </Layout>
   );
 }
-
-type PermissionRemoval = {
-  memberId: string;
-  role: VaultRole;
-};
 
 // A permission option is available when the plan includes that option's
 // section and allows at least one authorized person. Gating by section (not
@@ -528,158 +555,98 @@ function PermissionPicker({
   );
 }
 
-function Section({
-  title,
-  description,
-  members,
-  onEdit,
-  role,
-  onRemove,
-}: {
-  title: string;
-  description: string;
-  members: VaultMember[];
-  onEdit: (member: VaultMember) => void;
-  role: VaultRole;
-  onRemove: (id: string, role: VaultRole) => void;
-}) {
-  return (
-    <section>
-      <div className="flex items-baseline justify-between mb-2">
-        <h2 className="text-xl font-semibold">{title}</h2>
-        <p className="text-sm text-muted-foreground">
-          {members.length} {members.length === 1 ? "person" : "people"}
-        </p>
-      </div>
-      <p className="text-muted-foreground mb-4">{description}</p>
-      <MemberList
-        members={members}
-        role={role}
-        onEdit={onEdit}
-        onRemove={onRemove}
-      />
-    </section>
-  );
-}
-
-function DocumentSection({
-  title,
-  description,
-  groups,
+/**
+ * One authorized person, rendered once regardless of how many sections they
+ * can access. Their access is summarised as permission chips. Edit opens the
+ * form with all their permissions; Remove takes them off the vault entirely.
+ */
+function PersonCard({
+  member,
   onEdit,
   onRemove,
 }: {
-  title: string;
-  description: string;
-  groups: {
-    title: string;
-    description: string;
-    members: VaultMember[];
-    role: VaultRole;
-  }[];
-  onEdit: (member: VaultMember) => void;
-  onRemove: (id: string, role: VaultRole) => void;
+  member: VaultMember;
+  onEdit: () => void;
+  onRemove: () => void;
 }) {
-  const total = groups.reduce((sum, group) => sum + group.members.length, 0);
+  const permissions = member.permissions ?? [];
   return (
-    <section>
-      <div className="flex items-baseline justify-between mb-2">
-        <h2 className="text-xl font-semibold">{title}</h2>
-        <p className="text-sm text-muted-foreground">
-          {total} {total === 1 ? "person" : "people"}
-        </p>
-      </div>
-      <p className="text-muted-foreground mb-4">{description}</p>
+    <li className="card-surface p-5 flex flex-col sm:flex-row sm:items-start gap-4">
+      <span className="w-12 h-12 rounded-full bg-primary/10 text-primary inline-flex items-center justify-center text-lg font-semibold shrink-0">
+        {member.name.charAt(0).toUpperCase()}
+      </span>
 
-      <div className="space-y-5">
-        {groups.map((group) => (
-          <div key={group.role}>
-            <div className="flex items-baseline justify-between mb-2">
-              <div>
-                <h3 className="text-base font-semibold">{group.title}</h3>
-                <p className="text-sm text-muted-foreground">{group.description}</p>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                {group.members.length} {group.members.length === 1 ? "person" : "people"}
-              </p>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <p className="text-lg font-semibold text-foreground truncate">
+            {member.name}
+          </p>
+          {!member.userId && (
+            <span className="inline-flex items-center rounded-full bg-accent/15 text-accent px-2.5 py-0.5 text-sm font-semibold">
+              Pending signup
+            </span>
+          )}
+        </div>
+        <p className="text-base text-muted-foreground truncate">{member.email}</p>
+        <p className="text-base text-muted-foreground">
+          {member.dateOfBirth
+            ? `Born ${formatBirthday(member.dateOfBirth)}`
+            : "Birthday not recorded"}
+        </p>
+
+        <div className="mt-3">
+          <p className="text-sm font-semibold text-muted-foreground mb-2">
+            Can access
+          </p>
+          {permissions.length ? (
+            <div className="flex flex-wrap gap-2">
+              {permissions.map((p) => (
+                <PermissionChip
+                  key={`${p.documentType}-${p.permissionRole}`}
+                  permission={p}
+                />
+              ))}
             </div>
-            <MemberList
-              members={group.members}
-              role={group.role}
-              onEdit={onEdit}
-              onRemove={onRemove}
-            />
-          </div>
-        ))}
+          ) : (
+            <p className="text-base text-muted-foreground">No access yet.</p>
+          )}
+        </div>
       </div>
-    </section>
+
+      <div className="flex items-center gap-2 shrink-0 self-start">
+        <button
+          onClick={onEdit}
+          className="btn-secondary !min-h-[40px] !text-sm"
+        >
+          <Pencil size={15} strokeWidth={1.75} />
+          Edit
+        </button>
+        <button
+          onClick={onRemove}
+          className="p-2.5 text-muted-foreground hover:text-destructive transition-colors rounded-lg border border-transparent hover:border-border"
+          aria-label={`Remove ${member.name} from the vault`}
+        >
+          <Trash2 size={18} strokeWidth={1.75} />
+        </button>
+      </div>
+    </li>
   );
 }
 
-function MemberList({
-  members,
-  role,
-  onEdit,
-  onRemove,
-}: {
-  members: VaultMember[];
-  role: VaultRole;
-  onEdit: (member: VaultMember) => void;
-  onRemove: (id: string, role: VaultRole) => void;
-}) {
-  if (members.length === 0) {
-    return (
-      <div className="card-surface p-6 text-center">
-        <p className="text-muted-foreground">None named yet.</p>
-      </div>
-    );
-  }
-
+/**
+ * A single permission rendered as a compact chip: the section, the timing, and
+ * a lock hint when the access is hidden from the person. Replaces the old
+ * run-on "·"-joined summary string so a member's access is scannable.
+ */
+function PermissionChip({ permission }: { permission: MemberPermission }) {
+  const section = sectionLabel[permission.documentType] ?? permission.documentType;
+  const timing = accessTimingLabel[permission.accessTiming];
   return (
-    <ul className="card-surface divide-y divide-border">
-      {members.map((m) => (
-        <li key={m.id} className="flex items-center gap-4 px-5 py-4">
-          <span className="w-10 h-10 rounded-full bg-secondary text-foreground inline-flex items-center justify-center text-base font-semibold shrink-0">
-            {m.name.charAt(0).toUpperCase()}
-          </span>
-          <div className="flex-1 min-w-0">
-            <p className="text-base font-medium text-foreground truncate">
-              {m.name}
-            </p>
-            <p className="text-sm text-muted-foreground truncate">
-              {m.email}
-            </p>
-            <p className="text-sm text-muted-foreground">
-              {m.dateOfBirth ? `Born ${formatBirthday(m.dateOfBirth)}` : "Birthday not recorded"}
-              {m.accessTiming ? ` · ${accessTimingLabel[m.accessTiming]}` : ""}
-            </p>
-            {m.permissions?.length ? (
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {m.permissions.map(permissionSummary).join(" · ")}
-              </p>
-            ) : null}
-            {!m.userId && (
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Pending — will activate on signup
-              </p>
-            )}
-          </div>
-          <button
-            onClick={() => onEdit(m)}
-            className="btn-secondary !min-h-[36px] !text-sm shrink-0"
-          >
-            Edit
-          </button>
-          <button
-            onClick={() => onRemove(m.id, role)}
-            className="p-2 text-muted-foreground hover:text-destructive transition-colors rounded-md shrink-0"
-            aria-label={`Remove ${roleLabel[role]} permission for ${m.name}`}
-          >
-            <Trash2 size={18} strokeWidth={1.5} />
-          </button>
-        </li>
-      ))}
-    </ul>
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-secondary/50 px-3 py-1 text-sm font-medium text-foreground">
+      <span className="font-semibold">{section}</span>
+      <span className="text-muted-foreground">· {timing}</span>
+      {permission.hidden && <span className="text-muted-foreground">· hidden</span>}
+    </span>
   );
 }
 
@@ -687,20 +654,6 @@ function formatBirthday(value: string) {
   const [year, month, day] = value.slice(0, 10).split("-");
   if (!year || !month || !day) return value;
   return `${month}/${day}/${year}`;
-}
-
-function permissionSummary(permission: MemberPermission) {
-  const hidden = permission.hidden ? ", hidden" : "";
-  const section = sectionLabel[permission.documentType] ?? permission.documentType;
-  return `${section}: ${roleLabel[permission.permissionRole]} (${accessTimingLabel[permission.accessTiming]}${hidden})`;
-}
-
-function hasPermissionRole(member: VaultMember, role: VaultRole) {
-  return member.role === role || Boolean(member.permissions?.some((p) => p.permissionRole === role));
-}
-
-function permissionsWithoutRole(member: VaultMember, role: VaultRole) {
-  return (member.permissions ?? []).filter((p) => p.permissionRole !== role);
 }
 
 function memberFormBlocker({

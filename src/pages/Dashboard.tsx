@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Layout } from "@/components/layout/Layout";
 import { useApp } from "@/context/AppContext";
@@ -6,8 +6,11 @@ import { planAllowsDocument, roleLabel, willLocationLabel } from "@/lib/permissi
 import { RoleBadge, isVaultIdentityHidden, vaultAccessLabel, vaultDisplayName, vaultOwnerName } from "@/components/VaultSwitcher";
 import { ListSection } from "@/components/ListSection";
 import { FuneralCard } from "@/components/FuneralCard";
-import type { DocumentLocationType, DocumentType, ListSection as ListSectionKind, VaultAttachment, VaultDocument, VaultSummary, Will } from "@/lib/types";
-import { Download, FileText, Lock, Pencil, Plus, Trash2, Upload, Unlock, X } from "lucide-react";
+import { StatusPill } from "@/components/StatusPill";
+import { Zone } from "@/components/Zone";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import type { DocumentLocationType, DocumentType, ListSection as ListSectionKind, PlanLimits, ReleaseRequest, VaultAttachment, VaultDocument, VaultSummary, Will } from "@/lib/types";
+import { ChevronRight, Download, FileText, Lock, Pencil, Plus, Trash2, Upload, Unlock, X } from "lucide-react";
 
 const DOCUMENT_LOCATIONS: { value: DocumentLocationType; label: string }[] = [
   { value: "home_safe", label: "Home safe" },
@@ -68,6 +71,8 @@ const LIST_SECTIONS: ListSectionKind[] = [
   "contacts",
 ];
 
+const MAX_RELEASE_REQUESTS_PER_DOCUMENT = 3;
+
 export default function Dashboard() {
   const {
     vault,
@@ -80,9 +85,25 @@ export default function Dashboard() {
     loading,
     refreshVault,
     userOwnsVault,
+    listReleaseRequests,
   } = useApp();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const [releaseRequests, setReleaseRequests] = useState<ReleaseRequest[]>([]);
+
+  const vaultId = vault?.id ?? null;
+  const refreshReleaseRequests = useCallback(() => {
+    if (!vaultId) return;
+    listReleaseRequests()
+      .then(setReleaseRequests)
+      .catch(() => setReleaseRequests([]));
+  }, [vaultId, listReleaseRequests]);
+
+  // Load the vault's release requests so recorded documents can show how many
+  // proof submissions have been made and how many attempts remain.
+  useEffect(() => {
+    refreshReleaseRequests();
+  }, [refreshReleaseRequests]);
 
   useEffect(() => {
     if (loading) return;
@@ -123,6 +144,8 @@ export default function Dashboard() {
         identityHidden={isVaultIdentityHidden(currentVaultSummary)}
         vaultSummary={currentVaultSummary}
         releaseDocuments={releaseRequestDocumentsForSummary(currentVaultSummary)}
+        releaseRequests={releaseRequests}
+        onReleaseRequestSubmitted={refreshReleaseRequests}
       />
     );
   }
@@ -143,39 +166,65 @@ export default function Dashboard() {
     (documentType) => !dashboardDocumentTypes.has(documentType),
   );
 
+  const listSectionsToShow = LIST_SECTIONS.map((section) => {
+    const sectionEntries = (vault.entries ?? []).filter((e) => e.section === section);
+    const planAllows = planAllowsDocument(planLimits, section);
+    // Owners see the section when their plan includes it (to add items) or when
+    // it already holds items. Readers see it only when they were given entries —
+    // the backend omits sections they can't read.
+    const show = permissions.canModify
+      ? planAllows || sectionEntries.length > 0
+      : sectionEntries.length > 0;
+    return { section, sectionEntries, planAllows, show };
+  }).filter((s) => s.show);
+
+  const funeralAllowed = planAllowsDocument(planLimits, "funeral");
+  const showFuneral = permissions.canModify
+    ? funeralAllowed || vault.funeral.hasFuneral
+    : vault.funeral.hasFuneral;
+
+  const readiness = permissions.isOwner
+    ? computeReadiness(dashboardDocuments, planLimits, vault, showFuneral, funeralAllowed)
+    : null;
+
   return (
     <Layout>
       <div className="container py-7 md:py-10 max-w-4xl">
-        <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-7">
-          <div>
-            <div className="flex items-center gap-2 mb-3">
-              <RoleBadge
-                role={currentVaultSummary.role}
-                label={vaultAccessLabel(currentVaultSummary)}
-              />
-              {vault.releasedAt && (
-                <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded bg-accent/20 text-foreground">
-                  Released
-                </span>
-              )}
+        {/* ── Readiness header ─────────────────────────────────────── */}
+        <section className="card-surface p-6 md:p-8 mb-9">
+          <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <RoleBadge
+                  role={currentVaultSummary.role}
+                  label={vaultAccessLabel(currentVaultSummary)}
+                />
+                {vault.releasedAt && (
+                  <span className="inline-flex items-center px-3 py-1 text-sm font-semibold rounded-full bg-accent/15 text-accent">
+                    Released
+                  </span>
+                )}
+              </div>
+              <h1 className="text-3xl md:text-4xl font-semibold">
+                {permissions.isOwner
+                  ? `Welcome, ${firstName}`
+                  : `${vault.ownerName}'s vault`}
+              </h1>
+              <p className="mt-2 text-lg text-muted-foreground max-w-xl">
+                {permissions.isOwner
+                  ? "Your documents, who can see them, and where they're kept."
+                  : permissions.isSteward
+                    ? "You can see the vault documents and where they're kept."
+                    : "Access has been released."}
+              </p>
             </div>
-            <h1 className="text-2xl md:text-3xl font-semibold">
-              {permissions.isOwner
-                ? `Welcome, ${firstName}`
-                : `${vault.ownerName}'s vault`}
-            </h1>
-            <p className="mt-2 text-base text-muted-foreground max-w-xl">
-              {permissions.isOwner
-                ? "Your documents, who can see them, and where they're kept."
-                : permissions.isSteward
-                  ? "You can see the vault documents and where they're kept."
-                  : "Access has been released."}
-            </p>
+            {permissions.canModify && (
+              <ReleaseButton released={!!vault.releasedAt} onToggle={releaseVault} />
+            )}
           </div>
-          {permissions.canModify && (
-            <ReleaseButton released={!!vault.releasedAt} onToggle={releaseVault} />
-          )}
-        </header>
+
+          {readiness && <ReadinessMeter readiness={readiness} />}
+        </section>
 
         {!userOwnsVault && <CreateOwnVaultBanner />}
 
@@ -183,96 +232,171 @@ export default function Dashboard() {
           <SubscriptionStrip user={currentUser} />
         )}
 
-        <div className="space-y-5">
-          {dashboardDocuments.map((document) => (
-            <DocumentCard
-              key={document.type}
-              document={document}
-              canEdit={
-                permissions.canModify && planAllowsDocument(planLimits, document.type)
-              }
-              lockedMessage={
-                permissions.canModify && !planAllowsDocument(planLimits, document.type)
-                  ? `${planLimits?.name ?? "Your current"} plan does not include ${DOCUMENT_CONFIG[document.type].title.toLowerCase()}.`
-                  : undefined
-              }
-              releasedByReview={releasedDocuments.includes(document.type)}
-              canSubmitRelease={releaseRequestDocumentTypes.has(document.type)}
-              designation={designationForDocument(currentVaultSummary, document.type)}
-              attachments={(vault.attachments ?? []).filter(
-                (a) => a.section === document.type,
-              )}
-            />
-          ))}
-          {extraReleaseDocuments.length > 0 && (
-            <ReleaseAccessCard
-              documentTypes={extraReleaseDocuments}
-              vaultSummary={currentVaultSummary}
-            />
-          )}
-
-          {LIST_SECTIONS.map((section) => {
-            const sectionEntries = (vault.entries ?? []).filter(
-              (e) => e.section === section,
-            );
-            const planAllows = planAllowsDocument(planLimits, section);
-            // Owners see the section when their plan includes it (to add items)
-            // or when it already holds items. Readers see it only when they were
-            // given entries — the backend omits sections they can't read.
-            const show = permissions.canModify
-              ? planAllows || sectionEntries.length > 0
-              : sectionEntries.length > 0;
-            if (!show) return null;
-            return (
-              <ListSection
-                key={section}
-                section={section}
-                entries={sectionEntries}
-                canEdit={permissions.canModify && planAllows}
-              />
-            );
-          })}
-
-          {(() => {
-            const funeralAllowed = planAllowsDocument(planLimits, "funeral");
-            const showFuneral = permissions.canModify
-              ? funeralAllowed || vault.funeral.hasFuneral
-              : vault.funeral.hasFuneral;
-            if (!showFuneral) return null;
-            return (
-              <FuneralCard
-                funeral={vault.funeral}
-                canEdit={permissions.canModify && funeralAllowed}
+        <Zone title="Core documents">
+          <div className="grid gap-5 sm:grid-cols-2">
+            {dashboardDocuments.map((document) => (
+              <DocumentCard
+                key={document.type}
+                document={document}
+                canEdit={
+                  permissions.canModify && planAllowsDocument(planLimits, document.type)
+                }
                 lockedMessage={
-                  permissions.canModify && !funeralAllowed
-                    ? `${planLimits?.name ?? "Your current"} plan does not include funeral wishes.`
+                  permissions.canModify && !planAllowsDocument(planLimits, document.type)
+                    ? `${planLimits?.name ?? "Your current"} plan does not include ${DOCUMENT_CONFIG[document.type].title.toLowerCase()}.`
                     : undefined
                 }
+                releasedByReview={releasedDocuments.includes(document.type)}
+                canSubmitRelease={releaseRequestDocumentTypes.has(document.type)}
+                designation={designationForDocument(currentVaultSummary, document.type)}
+                attachments={(vault.attachments ?? []).filter(
+                  (a) => a.section === document.type,
+                )}
+                releaseRequests={releaseRequests.filter(
+                  (rr) => rr.documentType === document.type,
+                )}
+                onReleaseRequestSubmitted={refreshReleaseRequests}
               />
-            );
-          })()}
-        </div>
+            ))}
+          </div>
+          {extraReleaseDocuments.length > 0 && (
+            <div className="mt-5">
+              <ReleaseAccessCard
+                documentTypes={extraReleaseDocuments}
+                vaultSummary={currentVaultSummary}
+                releaseRequests={releaseRequests}
+                onReleaseRequestSubmitted={refreshReleaseRequests}
+              />
+            </div>
+          )}
+        </Zone>
 
-        <div className="h-8" />
+        {(listSectionsToShow.length > 0 || showFuneral) && (
+          <Zone title="Your lists">
+            <div className="space-y-5">
+              {listSectionsToShow.map(({ section, sectionEntries, planAllows }) => (
+                <ListSection
+                  key={section}
+                  section={section}
+                  entries={sectionEntries}
+                  canEdit={permissions.canModify && planAllows}
+                />
+              ))}
 
-        <PeopleCard
-          memberCount={memberCount}
-          released={!!vault.releasedAt}
-          canEdit={permissions.canModify}
-          maxAuthorizedPeople={planLimits?.maxAuthorizedPeople}
-        />
-
-        {permissions.isOwner && vault.emergencyContactName && (
-          <>
-            <div className="h-8" />
-            <EmergencyCard
-              name={vault.emergencyContactName}
-              phone={vault.emergencyContactPhone}
-            />
-          </>
+              {showFuneral && (
+                <FuneralCard
+                  funeral={vault.funeral}
+                  canEdit={permissions.canModify && funeralAllowed}
+                  lockedMessage={
+                    permissions.canModify && !funeralAllowed
+                      ? `${planLimits?.name ?? "Your current"} plan does not include funeral wishes.`
+                      : undefined
+                  }
+                />
+              )}
+            </div>
+          </Zone>
         )}
+
+        <Zone title="People &amp; access">
+          <div className="space-y-5">
+            <PeopleCard
+              memberCount={memberCount}
+              released={!!vault.releasedAt}
+              canEdit={permissions.canModify}
+              maxAuthorizedPeople={planLimits?.maxAuthorizedPeople}
+            />
+
+            {permissions.isOwner && vault.emergencyContactName && (
+              <EmergencyCard
+                name={vault.emergencyContactName}
+                phone={vault.emergencyContactPhone}
+              />
+            )}
+          </div>
+        </Zone>
       </div>
     </Layout>
+  );
+}
+
+/**
+ * Vault readiness for the owner: how many of the essential sections are
+ * recorded, and the single most useful next step. "Essentials" = the sections
+ * the owner's plan actually includes (locked sections don't count against you).
+ */
+interface Readiness {
+  done: number;
+  total: number;
+  nextLabel: string | null;
+}
+
+function computeReadiness(
+  documents: VaultDocument[],
+  planLimits: PlanLimits | null | undefined,
+  vault: { funeral: { hasFuneral: boolean } },
+  showFuneral: boolean,
+  funeralAllowed: boolean,
+): Readiness {
+  const items: { done: boolean; label: string }[] = [];
+
+  for (const doc of documents) {
+    if (!planAllowsDocument(planLimits, doc.type)) continue;
+    items.push({
+      done: doc.hasDocument,
+      label: DOCUMENT_CONFIG[doc.type].addLabel,
+    });
+  }
+  if (showFuneral && funeralAllowed) {
+    items.push({ done: vault.funeral.hasFuneral, label: "Record your funeral wishes" });
+  }
+
+  const done = items.filter((i) => i.done).length;
+  const next = items.find((i) => !i.done);
+  return { done, total: items.length, nextLabel: next?.label ?? null };
+}
+
+function ReadinessMeter({ readiness }: { readiness: Readiness }) {
+  const { done, total, nextLabel } = readiness;
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+
+  return (
+    <div className="mt-6 grid gap-4">
+      <div className="flex items-center gap-4 flex-wrap">
+        <span className="text-base font-medium">Vault readiness</span>
+        <span
+          className="flex-1 min-w-[160px] h-3.5 rounded-full bg-muted border border-border overflow-hidden"
+          role="progressbar"
+          aria-valuenow={done}
+          aria-valuemin={0}
+          aria-valuemax={total}
+          aria-label="Vault readiness"
+        >
+          <span
+            className="block h-full rounded-full bg-status-done transition-[width] duration-500"
+            style={{ width: `${pct}%` }}
+          />
+        </span>
+        <span className="text-base font-bold tnum whitespace-nowrap">
+          {done} of {total} essentials
+        </span>
+      </div>
+
+      {nextLabel && (
+        <div className="flex items-center justify-between gap-4 rounded-lg border-2 border-accent/45 bg-accent/10 px-5 py-4">
+          <span className="text-base md:text-lg">
+            <strong className="font-bold">Next step:</strong>{" "}
+            {nextLabel.charAt(0).toLowerCase() + nextLabel.slice(1)}.
+          </span>
+          <ChevronRight
+            size={22}
+            strokeWidth={2}
+            className="text-foreground shrink-0"
+            aria-hidden
+          />
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -381,6 +505,8 @@ function DocumentCard({
   canSubmitRelease,
   designation,
   attachments,
+  releaseRequests,
+  onReleaseRequestSubmitted,
 }: {
   document: VaultDocument;
   canEdit: boolean;
@@ -389,6 +515,8 @@ function DocumentCard({
   canSubmitRelease: boolean;
   designation?: string | null;
   attachments: VaultAttachment[];
+  releaseRequests: ReleaseRequest[];
+  onReleaseRequestSubmitted: () => void;
 }) {
   const { resealDocument, updateDocument } = useApp();
   const config = DOCUMENT_CONFIG[document.type];
@@ -427,99 +555,108 @@ function DocumentCard({
     }
   };
 
+  // Status pill: recorded documents show green "Recorded"; a review-released
+  // document is flagged amber; otherwise it's a calm neutral "Not yet".
+  const pill = document.hasDocument ? (
+    <StatusPill kind="done">Recorded</StatusPill>
+  ) : (
+    <StatusPill kind="pending">Not yet</StatusPill>
+  );
+
   return (
-    <section className="card-surface p-5 md:p-6">
-      <div className="flex items-baseline justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <h2 className="text-xl font-semibold">{config.title}</h2>
-          {releasedByReview && (
-            <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded bg-accent/20 text-foreground">
-              Released by review
-            </span>
-          )}
-        </div>
-        {canEdit && !editing && (
-          <div className="flex items-center gap-2">
-            {releasedByReview && (
-              <ResealDocumentButton
-                documentTitle={config.title}
-                onReseal={() => resealDocument(document.type)}
-              />
-            )}
-            <button
-              type="button"
-              onClick={() => setEditing(true)}
-              className="btn-secondary !min-h-[36px] !text-sm"
-            >
-              <Pencil size={14} strokeWidth={1.75} />
-              Edit
-            </button>
+    <section className="card-surface p-6 md:p-7 flex flex-col">
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <h2 className="text-xl font-semibold">{config.title}</h2>
+        {!editing && (
+          <div className="flex items-center gap-2 shrink-0">
+            {releasedByReview ? <StatusPill kind="attention">Released by review</StatusPill> : pill}
           </div>
         )}
       </div>
 
+      {canEdit && !editing && document.hasDocument && (
+        <div className="flex items-center gap-2 mb-4">
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="btn-secondary !min-h-[40px] !text-sm"
+          >
+            <Pencil size={15} strokeWidth={1.75} />
+            Edit
+          </button>
+          {releasedByReview && (
+            <ResealDocumentButton
+              documentTitle={config.title}
+              onReseal={() => resealDocument(document.type)}
+            />
+          )}
+        </div>
+      )}
+
       {!editing ? (
         document.hasDocument ? (
-          <dl className="space-y-3">
+          <div className="space-y-4">
+            {/* Location is the hero — the thing a reader actually needs. */}
             <div>
-              <dt className="text-xs font-medium text-muted-foreground">Status</dt>
-              <dd className="text-sm text-foreground">
-                Yes — recorded
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs font-medium text-muted-foreground">
-                Where it's kept
-              </dt>
-              <dd className="text-sm text-foreground">
+              <p className="text-lg font-semibold text-foreground">
                 {willLocationLabel[document.locationType] || document.locationType || "—"}
-              </dd>
-            </div>
-            {document.locationAddress && (
-              <div>
-                <dt className="text-xs font-medium text-muted-foreground">
-                  Address
-                </dt>
-                <dd className="text-sm text-foreground">
+              </p>
+              {document.locationAddress && (
+                <p className="text-base text-muted-foreground mt-1">
                   {document.locationAddress}
-                </dd>
-              </div>
-            )}
-            {document.locationDescription && (
-              <div>
-                <dt className="text-xs font-medium text-muted-foreground">
-                  Exact location
-                </dt>
-                <dd className="text-sm text-foreground">
+                </p>
+              )}
+              {document.locationDescription && (
+                <p className="text-base text-muted-foreground mt-1">
                   {document.locationDescription}
-                </dd>
-              </div>
-            )}
+                </p>
+              )}
+            </div>
+
             {canEdit && (
-              <>
-                <div>
-                  <dt className="text-xs font-medium text-muted-foreground">
-                    Release
-                  </dt>
-                  <dd className="text-sm text-foreground">{config.release}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs font-medium text-muted-foreground">
-                    Permission
-                  </dt>
-                  <dd className="text-sm text-foreground">{config.permission}</dd>
-                </div>
-              </>
+              <Collapsible className="border-t border-border pt-3">
+                <CollapsibleTrigger className="group inline-flex items-center gap-2 text-base font-semibold text-primary">
+                  <ChevronRight
+                    size={16}
+                    strokeWidth={2}
+                    className="transition-transform group-data-[state=open]:rotate-90"
+                    aria-hidden
+                  />
+                  How this is released
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <dl className="mt-3 space-y-3">
+                    <div>
+                      <dt className="text-sm font-semibold text-muted-foreground">
+                        Release
+                      </dt>
+                      <dd className="text-base text-foreground mt-0.5">{config.release}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-sm font-semibold text-muted-foreground">
+                        Permission
+                      </dt>
+                      <dd className="text-base text-foreground mt-0.5">{config.permission}</dd>
+                    </div>
+                  </dl>
+                </CollapsibleContent>
+              </Collapsible>
             )}
+            <ReleaseRequestsSummary requests={releaseRequests} />
             {canSubmitRelease && (
-              <ReleaseRequestForm documentType={document.type} designation={designation} />
+              <ReleaseRequestForm
+                documentType={document.type}
+                designation={designation}
+                submissionsUsed={releaseRequests.length}
+                onSubmitted={onReleaseRequestSubmitted}
+              />
             )}
             <DocumentCopyBlock
               section={document.type}
               canEdit={canEdit}
               attachments={attachments}
             />
-          </dl>
+          </div>
         ) : (
           <div>
             <p className="text-muted-foreground mb-4">
@@ -538,14 +675,20 @@ function DocumentCard({
               <button
                 type="button"
                 onClick={() => setEditing(true)}
-                className="btn-primary"
+                className="btn-primary self-start"
               >
                 <Plus size={18} strokeWidth={1.75} />
                 {config.addLabel}
               </button>
             )}
+            <ReleaseRequestsSummary requests={releaseRequests} />
             {canSubmitRelease && (
-              <ReleaseRequestForm documentType={document.type} designation={designation} />
+              <ReleaseRequestForm
+                documentType={document.type}
+                designation={designation}
+                submissionsUsed={releaseRequests.length}
+                onSubmitted={onReleaseRequestSubmitted}
+              />
             )}
           </div>
         )
@@ -719,10 +862,10 @@ function DocumentCopyBlock({
 
   return (
     <div className="pt-3 mt-1 border-t border-border/60">
-      <dt className="text-xs font-medium text-muted-foreground mb-2">
+      <p className="text-sm font-semibold text-muted-foreground mb-2">
         Copy on file
-      </dt>
-      <dd>
+      </p>
+      <div>
         {attachments.length > 0 ? (
           <ul className="space-y-2">
             {attachments.map((attachment) => (
@@ -798,7 +941,85 @@ function DocumentCopyBlock({
         )}
 
         {error && <p className="text-sm text-destructive mt-2">{error}</p>}
-      </dd>
+      </div>
+    </div>
+  );
+}
+
+const MAX_RELEASE_FILES = 3;
+
+/**
+ * Shows the release-request submissions made against a document so anyone with
+ * access to the card (owner, steward, successor, agent) can see how many proofs
+ * have been submitted and where they stand in admin review.
+ */
+function ReleaseRequestsSummary({ requests }: { requests: ReleaseRequest[] }) {
+  if (requests.length === 0) return null;
+
+  const pending = requests.filter((r) => r.status === "pending").length;
+  const approved = requests.filter((r) => r.status === "approved").length;
+  const rejected = requests.filter((r) => r.status === "rejected").length;
+  const latest = requests.reduce((newest, r) =>
+    new Date(r.createdAt) > new Date(newest.createdAt) ? r : newest,
+  );
+
+  const statusStyles: Record<ReleaseRequest["status"], string> = {
+    pending: "bg-status-attention/15 text-status-attention",
+    approved: "bg-status-done/15 text-status-done",
+    rejected: "bg-destructive/10 text-destructive",
+  };
+  const statusLabel: Record<ReleaseRequest["status"], string> = {
+    pending: "Under review",
+    approved: "Approved",
+    rejected: "Rejected",
+  };
+
+  return (
+    <div className="mt-5 border-t border-border pt-5">
+      <p className="text-sm font-semibold text-muted-foreground mb-2">
+        Release submissions
+      </p>
+      <p className="text-base text-foreground">
+        {requests.length}{" "}
+        {requests.length === 1 ? "submission" : "submissions"} for admin review
+        {pending > 0 && ` · ${pending} under review`}
+        {approved > 0 && ` · ${approved} approved`}
+        {rejected > 0 && ` · ${rejected} rejected`}
+      </p>
+      <ul className="mt-3 space-y-2">
+        {requests
+          .slice()
+          .sort(
+            (a, b) =>
+              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+          )
+          .map((r) => (
+            <li
+              key={r.id}
+              className="flex items-center justify-between gap-3 text-sm"
+            >
+              <span className="text-muted-foreground">
+                {new Date(r.createdAt).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                })}
+                {" · "}
+                {r.files.length} {r.files.length === 1 ? "file" : "files"}
+              </span>
+              <span
+                className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold shrink-0 ${statusStyles[r.status]}`}
+              >
+                {statusLabel[r.status]}
+              </span>
+            </li>
+          ))}
+      </ul>
+      {latest.status === "rejected" && latest.note && (
+        <p className="mt-3 text-sm text-muted-foreground">
+          Latest was rejected: {latest.note}
+        </p>
+      )}
     </div>
   );
 }
@@ -806,9 +1027,13 @@ function DocumentCopyBlock({
 function ReleaseRequestForm({
   documentType,
   designation,
+  submissionsUsed,
+  onSubmitted,
 }: {
   documentType: DocumentType;
   designation?: string | null;
+  submissionsUsed: number;
+  onSubmitted: () => void;
 }) {
   const { submitReleaseRequest } = useApp();
   const inputId = `release-files-${documentType}`;
@@ -820,10 +1045,15 @@ function ReleaseRequestForm({
     documentType === "will"
       ? "Submit death certificate and license"
       : "Submit physician certifications";
+  const attemptsLeft = Math.max(
+    MAX_RELEASE_REQUESTS_PER_DOCUMENT - submissionsUsed,
+    0,
+  );
+  const atLimit = attemptsLeft <= 0;
 
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (files.length === 0) return;
+    if (files.length === 0 || atLimit) return;
     setSaving(true);
     try {
       await submitReleaseRequest({
@@ -833,17 +1063,32 @@ function ReleaseRequestForm({
       });
       setSubmitted(true);
       setFiles([]);
+      onSubmitted();
     } finally {
       setSaving(false);
     }
   };
   const onFilesSelected = (selected: FileList | null) => {
     setSubmitted(false);
-    setFiles(Array.from(selected ?? []).slice(0, 2));
+    setFiles(Array.from(selected ?? []).slice(0, MAX_RELEASE_FILES));
   };
   const removeFile = (index: number) => {
     setFiles((current) => current.filter((_, i) => i !== index));
   };
+
+  if (atLimit) {
+    return (
+      <div className="mt-5 border-t border-border pt-5">
+        <p className="text-sm font-medium text-foreground">
+          {DOCUMENT_CONFIG[documentType].title}: no submissions left
+        </p>
+        <p className="text-sm text-muted-foreground mt-1">
+          You've used all {MAX_RELEASE_REQUESTS_PER_DOCUMENT} of your release
+          submissions for this document. An admin will review what you've sent.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <form onSubmit={onSubmit} className="mt-5 border-t border-border pt-5 space-y-4">
@@ -852,7 +1097,9 @@ function ReleaseRequestForm({
           {DOCUMENT_CONFIG[documentType].title}: {label}
         </p>
         <p className="text-sm text-muted-foreground mt-1">
-          Upload up to two images or PDFs for admin review.
+          Upload up to {MAX_RELEASE_FILES} images or PDFs for admin review.
+          {" "}
+          {attemptsLeft} of {MAX_RELEASE_REQUESTS_PER_DOCUMENT} submissions left.
         </p>
         {designation && (
           <p className="text-sm text-foreground mt-2">
@@ -873,7 +1120,7 @@ function ReleaseRequestForm({
             Choose proof files
           </span>
           <span className="block text-sm text-muted-foreground">
-            JPG, PNG, or PDF. Maximum 2 files.
+            JPG, PNG, or PDF. Maximum {MAX_RELEASE_FILES} files.
           </span>
         </span>
         <span className="sm:ml-auto btn-secondary !min-h-[36px] !text-sm pointer-events-none">
@@ -948,9 +1195,13 @@ function formatFileSize(bytes: number) {
 function ReleaseAccessCard({
   documentTypes,
   vaultSummary,
+  releaseRequests,
+  onReleaseRequestSubmitted,
 }: {
   documentTypes: DocumentType[];
   vaultSummary: VaultSummary;
+  releaseRequests: ReleaseRequest[];
+  onReleaseRequestSubmitted: () => void;
 }) {
   return (
     <section className="card-surface p-5 md:p-6">
@@ -960,13 +1211,22 @@ function ReleaseAccessCard({
         admin review to release that document section.
       </p>
       <div className="space-y-5">
-        {documentTypes.map((documentType) => (
-          <ReleaseRequestForm
-            key={documentType}
-            documentType={documentType}
-            designation={designationForDocument(vaultSummary, documentType)}
-          />
-        ))}
+        {documentTypes.map((documentType) => {
+          const forDoc = releaseRequests.filter(
+            (rr) => rr.documentType === documentType,
+          );
+          return (
+            <div key={documentType}>
+              <ReleaseRequestsSummary requests={forDoc} />
+              <ReleaseRequestForm
+                documentType={documentType}
+                designation={designationForDocument(vaultSummary, documentType)}
+                submissionsUsed={forDoc.length}
+                onSubmitted={onReleaseRequestSubmitted}
+              />
+            </div>
+          );
+        })}
       </div>
     </section>
   );
@@ -1012,7 +1272,7 @@ function PeopleCard({
       <div className="flex items-baseline justify-between mb-3">
         <h2 className="text-xl font-semibold">Who has access</h2>
         {canEdit && (
-          <Link to="/members" className="link text-sm">
+          <Link to="/members" className="link font-semibold">
             Manage people
           </Link>
         )}
@@ -1041,8 +1301,8 @@ function PeopleCard({
 function EmergencyCard({ name, phone }: { name: string; phone: string }) {
   return (
     <section className="card-surface p-5 md:p-6">
-      <h2 className="text-lg font-semibold mb-2">Emergency contact</h2>
-      <p className="text-sm font-medium">{name}</p>
+      <h2 className="text-xl font-semibold mb-2">Emergency contact</h2>
+      <p className="text-lg font-medium">{name}</p>
       <p className="text-muted-foreground tnum">{phone}</p>
     </section>
   );
@@ -1167,12 +1427,16 @@ function SealedAccessView({
   identityHidden,
   vaultSummary,
   releaseDocuments,
+  releaseRequests,
+  onReleaseRequestSubmitted,
 }: {
   vaultName: string;
   ownerName: string;
   identityHidden: boolean;
   vaultSummary: VaultSummary;
   releaseDocuments: DocumentType[];
+  releaseRequests: ReleaseRequest[];
+  onReleaseRequestSubmitted: () => void;
 }) {
   const documents = releaseDocuments;
   return (
@@ -1194,13 +1458,22 @@ function SealedAccessView({
         {documents.length > 0 && (
           <div className="mt-8 text-left">
             <div className="space-y-5">
-              {documents.map((documentType) => (
-                <ReleaseRequestForm
-                  key={documentType}
-                  documentType={documentType}
-                  designation={designationForDocument(vaultSummary, documentType)}
-                />
-              ))}
+              {documents.map((documentType) => {
+                const forDoc = releaseRequests.filter(
+                  (rr) => rr.documentType === documentType,
+                );
+                return (
+                  <div key={documentType} className="card-surface p-5 md:p-6">
+                    <ReleaseRequestsSummary requests={forDoc} />
+                    <ReleaseRequestForm
+                      documentType={documentType}
+                      designation={designationForDocument(vaultSummary, documentType)}
+                      submissionsUsed={forDoc.length}
+                      onSubmitted={onReleaseRequestSubmitted}
+                    />
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}

@@ -1,5 +1,6 @@
 import type {
   Notification,
+  ReleaseRequest,
   User,
   Vault,
   VaultMember,
@@ -379,3 +380,49 @@ export const mockNotifications: Notification[] = [
     vaultId: janeOwnVaultId,
   },
 ];
+
+// Release requests keyed by vault, so a steward/successor can see submissions
+// made against a document. The sealed (successor) vault shows a couple of prior
+// attempts under admin review.
+export const mockReleaseRequestsByVault: Record<string, ReleaseRequest[]> = {
+  [sealedVaultId]: [
+    {
+      id: "release-1",
+      vaultId: sealedVaultId,
+      requesterId: "member-jane-successor",
+      documentType: "will",
+      releaseReason: "death",
+      status: "rejected",
+      note: "Document was illegible — please resubmit a clearer copy.",
+      files: [
+        {
+          id: "release-1-file-1",
+          fileName: "death-certificate.jpg",
+          contentType: "image/jpeg",
+          fileSize: 842000,
+          gcsObject: `${sealedVaultId}/release-requests/release-1/death-certificate.jpg`,
+        },
+      ],
+      createdAt: "2026-08-08T00:00:00Z",
+    },
+    {
+      id: "release-2",
+      vaultId: sealedVaultId,
+      requesterId: "member-jane-successor",
+      documentType: "will",
+      releaseReason: "death",
+      status: "pending",
+      note: "",
+      files: [
+        {
+          id: "release-2-file-1",
+          fileName: "death-certificate-clear.pdf",
+          contentType: "application/pdf",
+          fileSize: 1240000,
+          gcsObject: `${sealedVaultId}/release-requests/release-2/death-certificate-clear.pdf`,
+        },
+      ],
+      createdAt: "2026-08-11T00:00:00Z",
+    },
+  ],
+};

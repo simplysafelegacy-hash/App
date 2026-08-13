@@ -31,6 +31,7 @@ import { permissionsForVault, type Permissions } from "@/lib/permissions";
 import {
   mockNotifications,
   mockOwner,
+  mockReleaseRequestsByVault,
   mockVaultSummaries,
   mockVaultsById,
 } from "@/lib/mockData";
@@ -101,6 +102,7 @@ interface AppContextType {
     note?: string;
     files: File[];
   }) => Promise<ReleaseRequest | null>;
+  listReleaseRequests: () => Promise<ReleaseRequest[]>;
 
   // Document copies (uploaded files attached to a section).
   uploadAttachment: (
@@ -660,6 +662,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [vault],
   );
 
+  const listReleaseRequests = useCallback(async (): Promise<ReleaseRequest[]> => {
+    if (!vault) return [];
+    if (DEMO_MODE) return mockReleaseRequestsByVault[vault.id] ?? [];
+    return api.releaseRequests.list();
+  }, [vault]);
+
   const uploadAttachment = useCallback(
     async (
       section: VaultSection,
@@ -883,6 +891,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       updateWill,
       updateDocument,
       submitReleaseRequest,
+      listReleaseRequests,
       uploadAttachment,
       removeAttachment,
       downloadAttachment,
@@ -920,6 +929,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       updateWill,
       updateDocument,
       submitReleaseRequest,
+      listReleaseRequests,
       uploadAttachment,
       removeAttachment,
       downloadAttachment,

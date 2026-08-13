@@ -52,6 +52,11 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        status: {
+          done: "hsl(var(--status-done))",
+          pending: "hsl(var(--status-pending))",
+          attention: "hsl(var(--status-attention))",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",

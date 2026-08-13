@@ -1,10 +1,11 @@
 import { useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useApp } from "@/context/AppContext";
-import { SealMark } from "@/components/SealMark";
+import { AuthLayout } from "@/components/layout/AuthLayout";
 
 /**
- * Landing — public welcome / auth gateway.
+ * Landing — public welcome / auth gateway. Shares the split-screen AuthLayout
+ * with the sign-in and sign-up pages so the first screen matches the rest.
  *
  * Logged-in users are bounced to the dashboard.
  */
@@ -17,42 +18,22 @@ export default function Landing() {
   }, [isAuthenticated, loading, navigate]);
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-5 py-10 bg-background">
-      <div className="w-full" style={{ maxWidth: 400 }}>
-        <div className="flex flex-col items-center gap-2 mb-8">
-          <SealMark size={38} />
-          <p className="text-xs text-muted-foreground">
-            Secure estate document access.
-          </p>
-        </div>
-
-        <div className="card-surface p-7">
-          <h1 className="text-2xl font-semibold text-center text-foreground mb-3">
-            Welcome
-          </h1>
-          <p className="text-center text-sm text-muted-foreground leading-relaxed mb-7">
-            Keep your wills, trusts, and estate records secure, organized,
-            and accessible to the right people.
-          </p>
-
-          <div className="space-y-3">
-            <Link to="/signup" className="btn-primary w-full">
-              Get started
-            </Link>
-            <Link to="/login" className="btn-secondary w-full">
-              Sign in
-            </Link>
-          </div>
-
-          <p className="text-center text-xs text-muted-foreground mt-6 leading-relaxed">
-            Private by design. Access controlled by you.
-          </p>
-        </div>
-
-        <p className="text-center text-xs text-muted-foreground mt-8">
-          © {new Date().getFullYear()} Simply Safe Legacy
-        </p>
+    <AuthLayout
+      title="Welcome"
+      subtitle="Keep your wills, trusts, and estate records secure, organized, and accessible to the right people."
+    >
+      <div className="space-y-3">
+        <Link to="/signup" className="btn-primary w-full">
+          Get started
+        </Link>
+        <Link to="/login" className="btn-secondary w-full">
+          Sign in
+        </Link>
       </div>
-    </div>
+
+      <p className="text-center text-base text-muted-foreground mt-8">
+        Private by design. Access controlled by you.
+      </p>
+    </AuthLayout>
   );
 }
