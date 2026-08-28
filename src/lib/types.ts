@@ -129,7 +129,7 @@ export interface ReleaseRequestFile {
   fileName: string;
   contentType: string;
   fileSize: number;
-  gcsObject: string;
+  storageKey: string;
 }
 
 export interface ReleaseRequest {
@@ -287,7 +287,7 @@ export interface AdminReleaseRequestFile {
   fileName: string;
   contentType: string;
   fileSize: number;
-  gcsObject: string;
+  storageKey: string;
 }
 
 export interface AdminReleaseRequest {

@@ -21,8 +21,9 @@ No file uploads yet. That'll come back when the basics are proven.
 | Frontend  | Vite + React 18 + TypeScript · Tailwind · shadcn primitives · Inter                   |
 | Backend   | Go 1.25 monolith · Chi router · pgx/v5 · JWT + argon2id                               |
 | Database  | PostgreSQL 16                                                                         |
+| Storage   | Amazon S3 (private bucket, SSE-KMS, EC2 instance-profile credentials)                 |
 | Billing   | Stripe Checkout + Customer Portal (hosted), webhooks for state                        |
-| Delivery  | Docker compose · Caddy (auto-HTTPS) on a single VM · rsync-based deploy from laptop   |
+| Delivery  | Docker compose · Caddy (auto-HTTPS) · rsync-based deploy from laptop · prod = app VM + database VM |
 
 Design: cream background, deep forest-green primary, Inter throughout,
 generous type sizes for older readers. Tokens in `src/index.css`.
@@ -78,15 +79,42 @@ When healthy:
 The frontend container is built with `VITE_DEMO_MODE=false` so it calls
 the real backend through nginx's `/api` proxy.
 
-### Google Cloud Storage uploads
+### Object storage (Amazon S3)
 
-Release proof files are uploaded to Google Cloud Storage using application
-default credentials. Set `GCS_BUCKET` on the backend. Objects are written
-under a vault-scoped prefix:
+Vault document copies and release-proof files are stored in a private S3
+bucket under vault-scoped keys:
 
 ```text
+{vault_id}/attachments/{section}/{attachment_id}/{file_name}
 {vault_id}/release-requests/{release_request_id}/{file_name}
 ```
+
+Configure the backend with `S3_BUCKET` and `AWS_REGION` (plus
+`S3_KMS_KEY_ID` for a customer-managed encryption key). **No AWS access keys
+belong in any env file:** in production the app VM carries an EC2 instance
+profile, so the SDK fetches short-lived credentials from the instance
+metadata service and rotates them automatically. Locally the SDK falls back
+to your `~/.aws/credentials` profile or `AWS_ACCESS_KEY_ID` /
+`AWS_SECRET_ACCESS_KEY` exported in your shell.
+
+Documents never leave S3 through a public or presigned URL. Every byte is
+proxied through an authenticated handler that re-checks the caller's
+permission on that vault section, so access is governed by the app's rules
+rather than by possession of a link. Downloads are additionally served with
+a forced-safe `Content-Type`, `attachment` disposition, `nosniff`, and a
+restrictive CSP, so an uploaded HTML or SVG file can't execute script in a
+victim's session.
+
+The backend verifies bucket access at startup and, outside development,
+refuses to boot if `S3_BUCKET` / `AWS_REGION` are missing or the bucket is
+unreachable — a misconfigured deploy fails immediately rather than on a
+user's first upload.
+
+Bucket setup, the IAM policy, KMS encryption, and the verification checklist
+are in **[docs/aws-s3-runbook.md](docs/aws-s3-runbook.md)**.
+
+To run the storage integration tests against a local MinIO instead of real
+S3, see the header comment in `backend/internal/storage/storage_test.go`.
 
 ### Support tickets
 
@@ -233,20 +261,73 @@ swaps. No UI work on our side.
 
 ---
 
-## Deploy (single VM, Docker compose, Caddy auto-HTTPS)
+## Deploy (Docker compose, Caddy auto-HTTPS)
 
 The deploy is **rsync from your laptop → Docker compose on the VM**, with
 Caddy on the VM handling TLS via Let's Encrypt. No GitHub, no CI, no
 container registry.
 
-### Two targets, two env files
+### Two targets, two topologies
 
 The scripts require **either `--dev` or `--prod`** — there is no default.
 
-| Flag      | Domain                       | Env file used    |
-| --------- | ---------------------------- | ---------------- |
-| `--dev`   | `dev.simplysafelegacy.com`   | `.env.dev`       |
-| `--prod`  | `app.simplysafelegacy.com`   | `.env.prod`      |
+| Flag      | Domain                       | Env file used    | Database                       |
+| --------- | ---------------------------- | ---------------- | ------------------------------ |
+| `--dev`   | `dev.simplysafelegacy.com`   | `.env.dev`       | `postgres` container on the VM  |
+| `--prod`  | `app.simplysafelegacy.com`   | `.env.prod`      | dedicated database VM           |
+
+**Production runs on two VMs:**
+
+```
+app VM                              database VM
+┌────────────────────────┐          ┌──────────────────┐
+│ caddy    :80 :443      │          │ postgres :5432   │
+│ frontend               │          │ (provisioned     │
+│ backend ───────────────┼─────────▶│  separately)     │
+└────────────────────────┘          └──────────────────┘
+      docker compose                   not managed by
+                                       these scripts
+```
+
+The app VM starts **no** Postgres container. In `docker-compose.yml` the
+`postgres` service sits behind the `localdb` compose profile; `.env.dev`
+enables it (`COMPOSE_PROFILES=localdb`) and production pins
+`COMPOSE_PROFILES=` empty, so the container is never created there. The
+backend instead connects out to `POSTGRES_HOST` from `.env.prod`:
+
+```sh
+POSTGRES_HOST=10.0.0.5        # private IP of the database VM
+POSTGRES_REMOTE_PORT=5432
+POSTGRES_SSLMODE=require      # disable only on a trusted private network
+```
+
+`deploy/update.sh --prod` refuses to run if `POSTGRES_HOST` is still
+`postgres` / `localhost` — the usual symptom of copying `.env.dev` — and
+warns if it can't open a TCP connection to the database VM.
+
+### Database migrations
+
+Migrations live in `backend/internal/db/migrations/` and are **embedded in
+the Go binary**. The backend applies any pending ones in lexical order at
+boot, recording each in the `schema_migrations` table, so:
+
+- **Deploying code deploys the schema with it.** `./deploy/update.sh --prod`
+  pushes the new binary, which migrates the database VM on startup and
+  prints which migrations ran.
+- It's idempotent — already-applied files are skipped, so re-running a
+  deploy is safe.
+
+Gate it with `RUN_MIGRATIONS` in `.env.prod`:
+
+| Value            | Effect                                                    |
+| ---------------- | --------------------------------------------------------- |
+| `true` (default) | Apply pending migrations at backend startup.               |
+| `false`          | Connect only; leave the schema untouched.                  |
+
+Set `false` to ship code without a schema change, or when you'd rather
+migrate deliberately before rolling out. To add a migration, drop a new
+`NNN_name.sql` in the migrations directory — the number prefix determines
+order — and deploy.
 
 The matching env file is scp'd to the VM as `/opt/simplysafelegacy/.env`
 on every run, so changes to `.env.dev` / `.env.prod` on your laptop
@@ -256,7 +337,13 @@ domain on the remote `.env` as a safety net.
 
 ### Prerequisites (one-time)
 
-- An Ubuntu 22.04 or 24.04 VM with a public IP.
+- An Ubuntu 22.04 or 24.04 **app VM** with a public IP.
+- For production, a **database VM** running PostgreSQL 16, reachable from
+  the app VM on 5432. On that VM: `listen_addresses` must include the
+  private interface, `pg_hba.conf` needs a `host` entry for the app VM,
+  and the firewall should allow 5432 **from the app VM only** — never
+  from the public internet. Create the role and database named in
+  `.env.prod` before the first deploy; migrations create the tables.
 - DNS A records for `app.simplysafelegacy.com` and/or
   `dev.simplysafelegacy.com` pointing at that IP, **propagated**
   before the first deploy. Without DNS, Caddy can't pass the ACME
@@ -267,6 +354,11 @@ domain on the remote `.env` as a safety net.
   deploy scripts default to `~/.ssh/lgc`.
 - `.env.dev` for dev deploys, `.env.prod` for prod — see "Local
   development" above and the Stripe section. Both are gitignored.
+  Start production from the documented template:
+
+  ```sh
+  cp .env.prod.example .env.prod
+  ```
 
 ### Configure the deploy
 
@@ -294,10 +386,13 @@ This:
    `node_modules`, `dist`, `.git`, all `.env*` files, etc.).
 3. scp's the chosen env file to the VM as `.env`.
 4. Pins `CADDY_DOMAIN`, `PUBLIC_APP_URL`, and `ALLOWED_ORIGINS` on the
-   remote `.env` to the chosen domain.
-5. Brings the stack up with the production overlay
+   remote `.env` to the chosen domain — plus `COMPOSE_PROFILES=` for
+   `--prod`, so no Postgres container starts on the app VM.
+5. For `--prod`, checks the app VM can reach the database VM.
+6. Brings the stack up with the production overlay
    (`docker-compose.yml` + `docker-compose.prod.yml`).
-6. Polls `/health` until the backend reports OK.
+7. Polls `/health` until the backend reports OK, then reports which
+   migrations were applied.
 
 Caddy fetches the Let's Encrypt cert on the first HTTPS request — give
 it a few seconds.
@@ -310,9 +405,11 @@ it a few seconds.
 ```
 
 Rsyncs only the deltas, re-syncs the matching env file, rebuilds
-whichever Docker images changed, and restarts affected services.
-Postgres + Caddy ACME state survive. Tails ~10s of backend logs after
-restart so you can spot a startup failure.
+whichever Docker images changed, and restarts affected services. Pending
+migrations are applied to the database VM as the backend boots (unless
+`RUN_MIGRATIONS=false`), and the migration lines are echoed at the end.
+Caddy ACME state and the database survive. Tails ~10s of backend logs
+after restart so you can spot a startup failure.
 
 ### Tail logs
 
@@ -341,17 +438,19 @@ app/
 │       ├── auth/              # JWT + argon2id + Google OAuth
 │       ├── config/            # Env parsing
 │       ├── db/                # pgx pool + embedded migrations
+│       ├── storage/           # S3 client (upload/download/delete)
 │       ├── handlers/          # auth, vault (incl. will), members,
 │       │                      #   billing (Stripe), notifications
 │       ├── models/            # Domain structs
 │       └── router/            # Chi routes + CORS
 ├── deploy/
+│   ├── _common.sh             # Shared deploy plumbing
 │   ├── deploy.sh              # First-time provision
 │   ├── update.sh              # Incremental push
 │   └── .env.deploy.example
 ├── Caddyfile                  # Reverse-proxy + auto-HTTPS
 ├── Dockerfile.frontend        # Multi-stage build → nginx
-├── docker-compose.yml         # Base: postgres + backend + frontend
+├── docker-compose.yml         # Base: postgres (profile "localdb") + backend + frontend
 ├── docker-compose.prod.yml    # Overlay: + caddy, − direct ports
 ├── nginx.conf                 # SPA fallback + /api proxy
 └── .env.example

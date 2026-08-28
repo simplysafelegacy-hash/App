@@ -12,6 +12,7 @@ import (
 
 	"github.com/simplysafelegacy/backend/internal/auth"
 	"github.com/simplysafelegacy/backend/internal/config"
+	"github.com/simplysafelegacy/backend/internal/storage"
 )
 
 // Deps carries everything the handlers need. The zero value is not usable;
@@ -21,7 +22,7 @@ type Deps struct {
 	Auth    *auth.Service
 	Google  *auth.GoogleService
 	Stripe  StripeConfig
-	Storage StorageConfig
+	Storage *storage.Client
 	Support SupportConfig
 	Logger  *slog.Logger
 	Dev     bool
@@ -40,10 +41,6 @@ type StripeConfig struct {
 	TrialDays        int
 }
 
-type StorageConfig struct {
-	Bucket string
-}
-
 type SupportConfig struct {
 	EmailTo      string
 	SMTPHost     string
@@ -53,8 +50,15 @@ type SupportConfig struct {
 	SMTPFrom     string
 }
 
-func StorageConfigFrom(c *config.Config) StorageConfig {
-	return StorageConfig{Bucket: c.GCSBucket}
+// StorageConfigFrom maps app config onto the storage package's config.
+func StorageConfigFrom(c *config.Config) storage.Config {
+	return storage.Config{
+		Bucket:       c.S3Bucket,
+		Region:       c.AWSRegion,
+		SSEKMSKeyID:  c.S3KMSKeyID,
+		Endpoint:     c.S3Endpoint,
+		UsePathStyle: c.S3PathStyle,
+	}
 }
 
 func SupportConfigFrom(c *config.Config) SupportConfig {
@@ -86,7 +90,7 @@ func New(
 	authSvc *auth.Service,
 	google *auth.GoogleService,
 	stripe StripeConfig,
-	storage StorageConfig,
+	store *storage.Client,
 	support SupportConfig,
 	logger *slog.Logger,
 	dev bool,
@@ -94,7 +98,7 @@ func New(
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Deps{DB: db, Auth: authSvc, Google: google, Stripe: stripe, Storage: storage, Support: support, Logger: logger, Dev: dev}
+	return &Deps{DB: db, Auth: authSvc, Google: google, Stripe: stripe, Storage: store, Support: support, Logger: logger, Dev: dev}
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

@@ -6,15 +6,31 @@
 # vs CADDY_DOMAIN). There is no default — picking the wrong target
 # would be a footgun.
 #
+# Topology
+# --------
+#   --dev   single VM: postgres runs as a container beside the app.
+#   --prod  two VMs:
+#             app VM  → caddy + frontend + backend   (this script targets it)
+#             db  VM  → postgres, already provisioned, NOT managed here
+#
+# In prod the postgres service stays behind the "localdb" compose profile
+# and is never enabled, so no database container is created on the app VM.
+# The backend connects out to POSTGRES_HOST instead.
+#
+# Schema migrations are embedded in the Go binary and applied by the backend
+# at boot, gated by RUN_MIGRATIONS (default true). Nothing separate to run.
+#
 # What it does:
 #   1. Loads deploy/.env.deploy (SSH target + Caddy domains).
-#   2. scp's the chosen .env.<dev|prod> to the remote as .env.
+#   2. For --prod, validates that .env.prod points at a real database VM.
 #   3. Installs Docker + compose plugin on the VM (idempotent).
 #   4. rsyncs the project to $DEPLOY_PATH.
-#   5. Rewrites CADDY_DOMAIN / PUBLIC_APP_URL / ALLOWED_ORIGINS on the
-#      remote .env to match the chosen target (safety net in case the
-#      env file disagrees).
-#   6. Brings up the stack with the production overlay.
+#   5. scp's the chosen .env.<dev|prod> to the remote as .env, then pins
+#      CADDY_DOMAIN / PUBLIC_APP_URL / ALLOWED_ORIGINS (and, for prod,
+#      COMPOSE_PROFILES='') to match the chosen target.
+#   6. Checks the app VM can reach Postgres.
+#   7. Brings up the stack with the production overlay and reports which
+#      migrations were applied.
 #
 # Re-run safe end-to-end. After the first run, use deploy/update.sh.
 
@@ -28,76 +44,31 @@ usage() {
 Usage: deploy/deploy.sh --dev | --prod
 
   --dev    Deploy to CADDY_DOMAIN_DEV (e.g. dev.simplysafelegacy.com)
-           using .env.dev for application secrets.
+           using .env.dev. Postgres runs as a local container.
   --prod   Deploy to CADDY_DOMAIN (e.g. app.simplysafelegacy.com)
-           using .env.prod for application secrets.
+           using .env.prod. Postgres lives on a separate VM; no
+           database container is started on the app VM.
 USAGE
 }
 
-TARGET=""
-for arg in "$@"; do
-    case "$arg" in
-        --dev)  TARGET="dev" ;;
-        --prod) TARGET="prod" ;;
-        -h|--help) usage; exit 0 ;;
-        *)
-            echo "unknown argument: $arg" >&2
-            usage >&2
-            exit 1
-            ;;
-    esac
-done
+# shellcheck source=deploy/_common.sh
+source "$ROOT/deploy/_common.sh"
 
-if [[ -z "$TARGET" ]]; then
-    echo "ERROR: pick --dev or --prod." >&2
-    usage >&2
-    exit 1
-fi
-
-if [[ ! -f deploy/.env.deploy ]]; then
-    echo "deploy/.env.deploy not found — copy deploy/.env.deploy.example and fill in." >&2
-    exit 1
-fi
-# shellcheck disable=SC1091
-source deploy/.env.deploy
-
-: "${DEPLOY_HOST:?DEPLOY_HOST is required in deploy/.env.deploy}"
-: "${DEPLOY_PATH:?DEPLOY_PATH is required in deploy/.env.deploy}"
-
-# Pick the target-specific values.
-if [[ "$TARGET" == "dev" ]]; then
-    : "${CADDY_DOMAIN_DEV:?CADDY_DOMAIN_DEV required in deploy/.env.deploy for --dev}"
-    CHOSEN_DOMAIN="$CADDY_DOMAIN_DEV"
-    ENV_FILE="$ROOT/.env.dev"
-else
-    : "${CADDY_DOMAIN:?CADDY_DOMAIN required in deploy/.env.deploy for --prod}"
-    CHOSEN_DOMAIN="$CADDY_DOMAIN"
-    ENV_FILE="$ROOT/.env.prod"
-fi
-
-if [[ ! -f "$ENV_FILE" ]]; then
-    echo "ERROR: $ENV_FILE not found — create it before deploying $TARGET." >&2
-    exit 1
-fi
+parse_target "$@"
+load_deploy_config
+setup_ssh
 
 echo "→ Target: $TARGET ($CHOSEN_DOMAIN) using $(basename "$ENV_FILE")"
+echo "→ App VM: $DEPLOY_HOST:$DEPLOY_PATH"
 
-SSH_OPTS=()
-RSYNC_SSH="ssh"
-if [[ -n "${DEPLOY_SSH_PORT:-}" ]]; then
-    SSH_OPTS+=(-p "$DEPLOY_SSH_PORT")
-    RSYNC_SSH="ssh -p $DEPLOY_SSH_PORT"
+if [[ "$TARGET" == "prod" ]]; then
+    check_prod_db_config
+    echo "→ Database: $DB_HOST:$DB_PORT/$DB_NAME (sslmode=$DB_SSLMODE, migrations=$DB_MIGRATE)"
+    echo "→ No postgres container will be started on the app VM."
+else
+    read_db_settings
+    echo "→ Database: local postgres container (compose profile 'localdb')"
 fi
-if [[ -n "${DEPLOY_IDENTITY_FILE:-}" ]]; then
-    # Expand a leading ~ since bash doesn't do it inside a variable.
-    DEPLOY_IDENTITY_FILE="${DEPLOY_IDENTITY_FILE/#\~/$HOME}"
-    SSH_OPTS+=(-i "$DEPLOY_IDENTITY_FILE")
-    RSYNC_SSH="$RSYNC_SSH -i $DEPLOY_IDENTITY_FILE"
-fi
-
-remote() {
-    ssh "${SSH_OPTS[@]}" "$DEPLOY_HOST" "$@"
-}
 
 echo "→ Checking Docker on $DEPLOY_HOST …"
 remote 'bash -s' <<'REMOTE'
@@ -131,33 +102,12 @@ REMOTE
 echo "→ Ensuring $DEPLOY_PATH exists on the VM …"
 remote "sudo mkdir -p '$DEPLOY_PATH' && sudo chown -R \$(id -u):\$(id -g) '$DEPLOY_PATH'"
 
-echo "→ rsyncing project to $DEPLOY_HOST:$DEPLOY_PATH …"
-rsync -az --delete \
-    --exclude '.git' \
-    --exclude 'node_modules' \
-    --exclude 'dist' \
-    --exclude '.env' \
-    --exclude '.env.dev' \
-    --exclude '.env.prod' \
-    --exclude 'deploy/.env.deploy' \
-    --exclude 'supabase' \
-    --exclude '.DS_Store' \
-    -e "$RSYNC_SSH" \
-    "$ROOT/" "$DEPLOY_HOST:$DEPLOY_PATH/"
+sync_project
+push_env
 
-echo "→ Pushing $(basename "$ENV_FILE") → remote .env …"
-scp "${SSH_OPTS[@]}" "$ENV_FILE" "$DEPLOY_HOST:$DEPLOY_PATH/.env"
-
-echo "→ Pinning CADDY_DOMAIN / PUBLIC_APP_URL / ALLOWED_ORIGINS to $CHOSEN_DOMAIN …"
-remote "grep -q '^CADDY_DOMAIN=' '$DEPLOY_PATH/.env' \
-    && sed -i 's|^CADDY_DOMAIN=.*|CADDY_DOMAIN=$CHOSEN_DOMAIN|' '$DEPLOY_PATH/.env' \
-    || echo 'CADDY_DOMAIN=$CHOSEN_DOMAIN' >> '$DEPLOY_PATH/.env'"
-remote "grep -q '^PUBLIC_APP_URL=' '$DEPLOY_PATH/.env' \
-    && sed -i 's|^PUBLIC_APP_URL=.*|PUBLIC_APP_URL=https://$CHOSEN_DOMAIN|' '$DEPLOY_PATH/.env' \
-    || echo 'PUBLIC_APP_URL=https://$CHOSEN_DOMAIN' >> '$DEPLOY_PATH/.env'"
-remote "grep -q '^ALLOWED_ORIGINS=' '$DEPLOY_PATH/.env' \
-    && sed -i 's|^ALLOWED_ORIGINS=.*|ALLOWED_ORIGINS=https://$CHOSEN_DOMAIN|' '$DEPLOY_PATH/.env' \
-    || echo 'ALLOWED_ORIGINS=https://$CHOSEN_DOMAIN' >> '$DEPLOY_PATH/.env'"
+if [[ "$TARGET" == "prod" ]]; then
+    check_db_reachable
+fi
 
 echo "→ Building and starting the stack …"
 remote "cd '$DEPLOY_PATH' && docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build"
@@ -169,6 +119,8 @@ remote "for i in 1 2 3 4 5 6 7 8 9 10; do \
     fi; \
     echo '  …waiting'; sleep 3; \
 done; echo '  backend did not come up healthy in time — check logs.'; exit 1" || true
+
+report_migrations
 
 cat <<DONE
 

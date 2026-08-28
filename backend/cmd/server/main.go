@@ -15,6 +15,7 @@ import (
 	"github.com/simplysafelegacy/backend/internal/db"
 	"github.com/simplysafelegacy/backend/internal/handlers"
 	"github.com/simplysafelegacy/backend/internal/router"
+	"github.com/simplysafelegacy/backend/internal/storage"
 )
 
 func main() {
@@ -39,11 +40,38 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	pool, err := db.Connect(ctx, cfg.DatabaseURL)
+	pool, err := db.Connect(ctx, cfg.DatabaseURL, cfg.RunMigrations)
 	if err != nil {
 		log.Fatalf("database: %v", err)
 	}
 	defer pool.Close()
+
+	// Object storage. Required outside development — config.Load already
+	// rejected an empty bucket there, so a nil client only ever reaches the
+	// handlers in dev, where upload endpoints report a config error.
+	var store *storage.Client
+	if cfg.S3Bucket == "" {
+		logger.Warn("S3_BUCKET not set — document upload and download are disabled")
+	} else {
+		store, err = storage.New(ctx, handlers.StorageConfigFrom(cfg))
+		if err != nil {
+			log.Fatalf("storage: %v", err)
+		}
+		// Fail fast on a bad bucket name or IAM role rather than on a
+		// user's first upload.
+		if err := store.CheckAccess(ctx); err != nil {
+			if cfg.Env == "development" {
+				logger.Warn("S3 bucket not reachable — uploads will fail", "err", err)
+			} else {
+				log.Fatalf("storage: %v", err)
+			}
+		} else {
+			logger.Info("object storage ready",
+				"bucket", cfg.S3Bucket,
+				"region", cfg.AWSRegion,
+				"sse_kms", cfg.S3KMSKeyID != "")
+		}
+	}
 
 	authSvc := auth.New(cfg.JWTSecret, cfg.JWTExpiry)
 	googleSvc := auth.NewGoogleService(cfg.GoogleClientID, cfg.GoogleClientSecret)
@@ -52,7 +80,7 @@ func main() {
 		authSvc,
 		googleSvc,
 		handlers.StripeConfigFrom(cfg),
-		handlers.StorageConfigFrom(cfg),
+		store,
 		handlers.SupportConfigFrom(cfg),
 		logger,
 		cfg.Env == "development",

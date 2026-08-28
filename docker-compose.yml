@@ -3,11 +3,15 @@
 #   docker compose up --build
 #
 # For production deployment, this file is layered with docker-compose.prod.yml
-# (added by the deploy script) which adds Caddy and removes direct port
-# exposures so only Caddy reaches the internet.
+# (added by the deploy script) which adds Caddy, removes direct port
+# exposures so only Caddy reaches the internet, and points the backend at
+# the dedicated Postgres VM instead of the local postgres container.
 #
 # Services:
-#   postgres  → the vault's database
+#   postgres  → the vault's database. Profile "localdb", enabled by default
+#               via COMPOSE_PROFILES so plain `docker compose up` still
+#               brings it up. Production leaves the profile off, so the
+#               container is never created on the app VM.
 #   backend   → Go monolith (see backend/Dockerfile)
 #   frontend  → Vite build served by nginx, proxies /api → backend
 
@@ -16,6 +20,7 @@ name: simplysafelegacy
 services:
   postgres:
     image: postgres:16-alpine
+    profiles: ["localdb"]
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-simplysafelegacy}
@@ -39,10 +44,15 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+        required: false
     environment:
       APP_ENV: ${APP_ENV:-development}
       PORT: "8080"
-      DATABASE_URL: postgres://${POSTGRES_USER:-simplysafelegacy}:${POSTGRES_PASSWORD:-simplysafelegacy_dev_password}@postgres:5432/${POSTGRES_DB:-simplysafelegacy}?sslmode=disable
+      # POSTGRES_HOST defaults to the sibling container; production sets it
+      # to the database VM's private address. POSTGRES_SSLMODE is disable
+      # locally and require across the wire.
+      DATABASE_URL: postgres://${POSTGRES_USER:-simplysafelegacy}:${POSTGRES_PASSWORD:-simplysafelegacy_dev_password}@${POSTGRES_HOST:-postgres}:${POSTGRES_REMOTE_PORT:-5432}/${POSTGRES_DB:-simplysafelegacy}?sslmode=${POSTGRES_SSLMODE:-disable}
+      RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}
       JWT_SECRET: ${JWT_SECRET:-change-me-to-a-long-random-string-of-at-least-32-chars}
       JWT_EXPIRY: ${JWT_EXPIRY:-168h}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:8000,http://localhost:5173}
@@ -56,7 +66,18 @@ services:
       STRIPE_PRICE_FAMILY: ${STRIPE_PRICE_FAMILY}
       STRIPE_PRICE_SAFEKEEPING: ${STRIPE_PRICE_SAFEKEEPING}
       STRIPE_TRIAL_DAYS: ${STRIPE_TRIAL_DAYS:-14}
-      GCS_BUCKET: ${GCS_BUCKET}
+      # ── Object storage (Amazon S3) ──
+      # No AWS keys here: in production the EC2 instance profile supplies
+      # short-lived, auto-rotating credentials via IMDS. The static
+      # AWS_* vars below stay empty unless a developer sets them locally.
+      S3_BUCKET: ${S3_BUCKET:-}
+      AWS_REGION: ${AWS_REGION:-}
+      S3_KMS_KEY_ID: ${S3_KMS_KEY_ID:-}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_PATH_STYLE: ${S3_PATH_STYLE:-false}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
       SUPPORT_EMAIL_TO: ${SUPPORT_EMAIL_TO:-simplysafelegacy@gmail.com}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}

@@ -5,15 +5,31 @@
 # Use this after every code change. For first-time provisioning, use
 # deploy/deploy.sh instead.
 #
+# Database
+# --------
+#   --dev   postgres runs as a container beside the app (profile "localdb").
+#   --prod  postgres lives on its own VM. No database container is created
+#           on the app VM; the backend connects out to POSTGRES_HOST.
+#
+# Schema updates ship with the code: migrations are embedded in the Go
+# binary and applied at boot against whichever database DATABASE_URL points
+# at, gated by RUN_MIGRATIONS (default true). So `update.sh --prod` deploys
+# both the code and the pending schema changes, and prints which migrations
+# were applied. Set RUN_MIGRATIONS=false in .env.prod to push code without
+# touching the schema.
+#
 # What it does:
-#   1. rsync project to the VM (excludes .env files).
-#   2. scp the matching .env.<dev|prod> to the remote as .env. This
+#   1. For --prod, validates .env.prod points at a real database VM.
+#   2. rsync project to the app VM (excludes .env files).
+#   3. scp the matching .env.<dev|prod> to the remote as .env. This
 #      keeps remote env in sync with whatever you've edited locally —
 #      if you'd rather edit the remote .env in place, comment out the
-#      scp line below.
-#   3. Pin CADDY_DOMAIN / PUBLIC_APP_URL / ALLOWED_ORIGINS to match
-#      the chosen target.
-#   4. docker compose up -d --build (rebuilds only changed images).
+#      push_env call below.
+#   4. Pin CADDY_DOMAIN / PUBLIC_APP_URL / ALLOWED_ORIGINS, and for prod
+#      COMPOSE_PROFILES='' so no postgres container is ever started.
+#   5. Check the app VM can reach Postgres.
+#   6. docker compose up -d --build (rebuilds only changed images), then
+#      report the migrations that ran.
 
 set -euo pipefail
 
@@ -26,105 +42,45 @@ Usage: deploy/update.sh --dev | --prod
 
   --dev    Update dev.simplysafelegacy.com using .env.dev.
   --prod   Update app.simplysafelegacy.com using .env.prod.
+           Applies pending DB migrations to the database VM on boot
+           unless RUN_MIGRATIONS=false.
 USAGE
 }
 
-TARGET=""
-for arg in "$@"; do
-    case "$arg" in
-        --dev)  TARGET="dev" ;;
-        --prod) TARGET="prod" ;;
-        -h|--help) usage; exit 0 ;;
-        *)
-            echo "unknown argument: $arg" >&2
-            usage >&2
-            exit 1
-            ;;
-    esac
-done
+# shellcheck source=deploy/_common.sh
+source "$ROOT/deploy/_common.sh"
 
-if [[ -z "$TARGET" ]]; then
-    echo "ERROR: pick --dev or --prod." >&2
-    usage >&2
-    exit 1
-fi
-
-if [[ ! -f deploy/.env.deploy ]]; then
-    echo "deploy/.env.deploy not found — copy deploy/.env.deploy.example and fill in." >&2
-    exit 1
-fi
-# shellcheck disable=SC1091
-source deploy/.env.deploy
-
-: "${DEPLOY_HOST:?DEPLOY_HOST is required in deploy/.env.deploy}"
-: "${DEPLOY_PATH:?DEPLOY_PATH is required in deploy/.env.deploy}"
-
-if [[ "$TARGET" == "dev" ]]; then
-    : "${CADDY_DOMAIN_DEV:?CADDY_DOMAIN_DEV required in deploy/.env.deploy for --dev}"
-    CHOSEN_DOMAIN="$CADDY_DOMAIN_DEV"
-    ENV_FILE="$ROOT/.env.dev"
-else
-    : "${CADDY_DOMAIN:?CADDY_DOMAIN required in deploy/.env.deploy for --prod}"
-    CHOSEN_DOMAIN="$CADDY_DOMAIN"
-    ENV_FILE="$ROOT/.env.prod"
-fi
-
-if [[ ! -f "$ENV_FILE" ]]; then
-    echo "ERROR: $ENV_FILE not found — create it before updating $TARGET." >&2
-    exit 1
-fi
+parse_target "$@"
+load_deploy_config
+setup_ssh
 
 echo "→ Target: $TARGET ($CHOSEN_DOMAIN) using $(basename "$ENV_FILE")"
+echo "→ App VM: $DEPLOY_HOST:$DEPLOY_PATH"
 
-SSH_OPTS=()
-RSYNC_SSH="ssh"
-if [[ -n "${DEPLOY_SSH_PORT:-}" ]]; then
-    SSH_OPTS+=(-p "$DEPLOY_SSH_PORT")
-    RSYNC_SSH="ssh -p $DEPLOY_SSH_PORT"
+if [[ "$TARGET" == "prod" ]]; then
+    check_prod_db_config
+    echo "→ Database: $DB_HOST:$DB_PORT/$DB_NAME (sslmode=$DB_SSLMODE, migrations=$DB_MIGRATE)"
+    if [[ "$DB_MIGRATE" == "false" ]]; then
+        echo "  RUN_MIGRATIONS=false — schema will NOT be touched by this deploy."
+    fi
+else
+    read_db_settings
+    echo "→ Database: local postgres container (compose profile 'localdb')"
 fi
-if [[ -n "${DEPLOY_IDENTITY_FILE:-}" ]]; then
-    # Expand a leading ~ since bash doesn't do it inside a variable.
-    DEPLOY_IDENTITY_FILE="${DEPLOY_IDENTITY_FILE/#\~/$HOME}"
-    SSH_OPTS+=(-i "$DEPLOY_IDENTITY_FILE")
-    RSYNC_SSH="$RSYNC_SSH -i $DEPLOY_IDENTITY_FILE"
+
+sync_project
+push_env
+
+if [[ "$TARGET" == "prod" ]]; then
+    check_db_reachable
 fi
-
-remote() {
-    ssh "${SSH_OPTS[@]}" "$DEPLOY_HOST" "$@"
-}
-
-echo "→ rsyncing changes to $DEPLOY_HOST:$DEPLOY_PATH …"
-rsync -az --delete \
-    --exclude '.git' \
-    --exclude 'node_modules' \
-    --exclude 'dist' \
-    --exclude '.env' \
-    --exclude '.env.dev' \
-    --exclude '.env.prod' \
-    --exclude 'deploy/.env.deploy' \
-    --exclude 'supabase' \
-    --exclude '.DS_Store' \
-    -e "$RSYNC_SSH" \
-    "$ROOT/" "$DEPLOY_HOST:$DEPLOY_PATH/"
-
-echo "→ Pushing $(basename "$ENV_FILE") → remote .env …"
-scp "${SSH_OPTS[@]}" "$ENV_FILE" "$DEPLOY_HOST:$DEPLOY_PATH/.env"
-
-echo "→ Pinning CADDY_DOMAIN / PUBLIC_APP_URL / ALLOWED_ORIGINS to $CHOSEN_DOMAIN …"
-remote "grep -q '^CADDY_DOMAIN=' '$DEPLOY_PATH/.env' \
-    && sed -i 's|^CADDY_DOMAIN=.*|CADDY_DOMAIN=$CHOSEN_DOMAIN|' '$DEPLOY_PATH/.env' \
-    || echo 'CADDY_DOMAIN=$CHOSEN_DOMAIN' >> '$DEPLOY_PATH/.env'"
-remote "grep -q '^PUBLIC_APP_URL=' '$DEPLOY_PATH/.env' \
-    && sed -i 's|^PUBLIC_APP_URL=.*|PUBLIC_APP_URL=https://$CHOSEN_DOMAIN|' '$DEPLOY_PATH/.env' \
-    || echo 'PUBLIC_APP_URL=https://$CHOSEN_DOMAIN' >> '$DEPLOY_PATH/.env'"
-remote "grep -q '^ALLOWED_ORIGINS=' '$DEPLOY_PATH/.env' \
-    && sed -i 's|^ALLOWED_ORIGINS=.*|ALLOWED_ORIGINS=https://$CHOSEN_DOMAIN|' '$DEPLOY_PATH/.env' \
-    || echo 'ALLOWED_ORIGINS=https://$CHOSEN_DOMAIN' >> '$DEPLOY_PATH/.env'"
 
 echo "→ Rebuilding & restarting changed services …"
 remote "cd '$DEPLOY_PATH' && docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build"
 
 echo "→ Tailing backend logs for ~10s so startup is visible …"
 remote "cd '$DEPLOY_PATH' && timeout 10 docker compose logs --tail=20 -f backend || true"
+
+report_migrations
 
 echo "→ Done. https://$CHOSEN_DOMAIN"

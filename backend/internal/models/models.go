@@ -135,7 +135,7 @@ type FuneralWishes struct {
 	UpdatedAt       *time.Time `json:"updatedAt,omitempty"`
 }
 
-// VaultAttachment is an uploaded file copy stored in GCS and attached to a
+// VaultAttachment is an uploaded file copy stored in S3 and attached to a
 // vault section (and optionally a specific list entry). It is returned to a
 // caller only when they may read that section; the file itself is streamed
 // through a permission-checked download handler, never a public URL.
@@ -154,7 +154,7 @@ type ReleaseRequestFile struct {
 	FileName    string `json:"fileName"`
 	ContentType string `json:"contentType"`
 	FileSize    int64  `json:"fileSize"`
-	GCSObject   string `json:"gcsObject"`
+	StorageKey  string `json:"storageKey"`
 }
 
 type ReleaseRequest struct {

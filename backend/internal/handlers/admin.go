@@ -3,15 +3,14 @@ package handlers
 import (
 	"context"
 	"database/sql"
-	"fmt"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"google.golang.org/api/googleapi"
-	storage "google.golang.org/api/storage/v1"
+	"github.com/simplysafelegacy/backend/internal/storage"
 )
 
 type adminReleaseRequest struct {
@@ -40,7 +39,7 @@ type adminReleaseRequestFile struct {
 	FileName    string `json:"fileName"`
 	ContentType string `json:"contentType"`
 	FileSize    int64  `json:"fileSize"`
-	GCSObject   string `json:"gcsObject"`
+	StorageKey  string `json:"storageKey"`
 }
 
 type reviewReleaseRequestReq struct {
@@ -197,39 +196,34 @@ func (d *Deps) adminReviewReleaseRequest(w http.ResponseWriter, r *http.Request,
 
 func (d *Deps) AdminDownloadReleaseRequestFile(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	var bucket, objectName, fileName, contentType string
+	var bucket, objectKey, fileName, contentType string
 	err := d.DB.QueryRow(r.Context(), `
-		SELECT gcs_bucket, gcs_object, file_name, content_type
+		SELECT storage_bucket, storage_key, file_name, content_type
 		FROM release_request_files
 		WHERE id = $1
-	`, id).Scan(&bucket, &objectName, &fileName, &contentType)
+	`, id).Scan(&bucket, &objectKey, &fileName, &contentType)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "file not found")
 		return
 	}
 
-	svc, err := storage.NewService(r.Context())
-	if err != nil {
-		d.internalError(w, r, err, "failed to initialize storage")
+	if d.Storage == nil {
+		writeError(w, http.StatusServiceUnavailable, "file downloads are not configured")
 		return
 	}
-	resp, err := svc.Objects.Get(bucket, objectName).Download()
+	body, err := d.Storage.Download(r.Context(), bucket, objectKey)
 	if err != nil {
-		if gerr, ok := err.(*googleapi.Error); ok && gerr.Code == http.StatusNotFound {
+		if errors.Is(err, storage.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "file not found in storage")
 			return
 		}
 		d.internalError(w, r, err, "failed to download release file")
 		return
 	}
-	defer resp.Body.Close()
+	defer body.Close()
 
-	if contentType == "" {
-		contentType = "application/octet-stream"
-	}
-	w.Header().Set("Content-Type", contentType)
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, sanitizeObjectPart(fileName)))
-	_, _ = io.Copy(w, resp.Body)
+	writeDownloadHeaders(w, fileName, contentType)
+	_, _ = io.Copy(w, body)
 }
 
 func (d *Deps) loadAdminReleaseRequest(ctx context.Context, id string) (adminReleaseRequest, error) {
@@ -259,7 +253,7 @@ func (d *Deps) loadAdminReleaseRequest(ctx context.Context, id string) (adminRel
 
 func (d *Deps) listAdminReleaseRequestFiles(ctx context.Context, requestID string) ([]adminReleaseRequestFile, error) {
 	rows, err := d.DB.Query(ctx, `
-		SELECT id, file_name, content_type, file_size, gcs_object
+		SELECT id, file_name, content_type, file_size, storage_key
 		FROM release_request_files
 		WHERE release_request_id = $1
 		ORDER BY created_at ASC
@@ -271,7 +265,7 @@ func (d *Deps) listAdminReleaseRequestFiles(ctx context.Context, requestID strin
 	out := []adminReleaseRequestFile{}
 	for rows.Next() {
 		var file adminReleaseRequestFile
-		if err := rows.Scan(&file.ID, &file.FileName, &file.ContentType, &file.FileSize, &file.GCSObject); err != nil {
+		if err := rows.Scan(&file.ID, &file.FileName, &file.ContentType, &file.FileSize, &file.StorageKey); err != nil {
 			return nil, err
 		}
 		out = append(out, file)

@@ -652,7 +652,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             fileName: file.name,
             contentType: file.type,
             fileSize: file.size,
-            gcsObject: `${vault.id}/release-requests/demo/${file.name}`,
+            storageKey: `${vault.id}/release-requests/demo/${file.name}`,
           })),
           createdAt: new Date().toISOString(),
         };

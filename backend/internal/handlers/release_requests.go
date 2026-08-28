@@ -3,16 +3,13 @@ package handlers
 import (
 	"context"
 	"fmt"
-	"io"
 	"mime/multipart"
 	"net/http"
 	"path/filepath"
 	"strings"
 
-	"google.golang.org/api/googleapi"
-	storage "google.golang.org/api/storage/v1"
-
 	"github.com/simplysafelegacy/backend/internal/models"
+	"github.com/simplysafelegacy/backend/internal/storage"
 )
 
 const maxReleaseUploadBytes = 25 << 20
@@ -66,7 +63,7 @@ func (d *Deps) CreateReleaseRequest(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("upload up to %d files", maxReleaseFiles))
 		return
 	}
-	if d.Storage.Bucket == "" {
+	if d.Storage == nil {
 		writeError(w, http.StatusServiceUnavailable, "release uploads are not configured")
 		return
 	}
@@ -155,11 +152,11 @@ func (d *Deps) createReleaseRequest(
 		var file models.ReleaseRequestFile
 		err = tx.QueryRow(ctx, `
 			INSERT INTO release_request_files (
-				release_request_id, gcs_bucket, gcs_object, file_name, content_type, file_size
+				release_request_id, storage_bucket, storage_key, file_name, content_type, file_size
 			) VALUES ($1, $2, $3, $4, $5, $6)
-			RETURNING id, file_name, content_type, file_size, gcs_object
-		`, req.ID, d.Storage.Bucket, uploaded.ObjectName, uploaded.FileName, uploaded.ContentType, uploaded.Size).Scan(
-			&file.ID, &file.FileName, &file.ContentType, &file.FileSize, &file.GCSObject,
+			RETURNING id, file_name, content_type, file_size, storage_key
+		`, req.ID, d.Storage.Bucket(), uploaded.ObjectKey, uploaded.FileName, uploaded.ContentType, uploaded.Size).Scan(
+			&file.ID, &file.FileName, &file.ContentType, &file.FileSize, &file.StorageKey,
 		)
 		if err != nil {
 			return models.ReleaseRequest{}, err
@@ -173,7 +170,7 @@ func (d *Deps) createReleaseRequest(
 }
 
 type uploadedReleaseFile struct {
-	ObjectName  string
+	ObjectKey   string
 	FileName    string
 	ContentType string
 	Size        int64
@@ -191,28 +188,17 @@ func (d *Deps) uploadReleaseFile(ctx context.Context, vaultID, requestID string,
 		contentType = "application/octet-stream"
 	}
 	safeName := sanitizeObjectPart(header.Filename)
-	objectName := fmt.Sprintf("%s/release-requests/%s/%s", vaultID, requestID, safeName)
+	objectKey := storage.BuildKey(vaultID, "release-requests", requestID, safeName)
 
-	if err := uploadToGCS(ctx, d.Storage.Bucket, objectName, contentType, file); err != nil {
+	if err := d.Storage.Upload(ctx, objectKey, contentType, file, header.Size); err != nil {
 		return uploadedReleaseFile{}, err
 	}
 	return uploadedReleaseFile{
-		ObjectName:  objectName,
+		ObjectKey:   objectKey,
 		FileName:    header.Filename,
 		ContentType: contentType,
 		Size:        header.Size,
 	}, nil
-}
-
-func uploadToGCS(ctx context.Context, bucket, objectName, contentType string, body io.Reader) error {
-	svc, err := storage.NewService(ctx)
-	if err != nil {
-		return err
-	}
-	_, err = svc.Objects.Insert(bucket, &storage.Object{Name: objectName}).
-		Media(body, googleapi.ContentType(contentType)).
-		Do()
-	return err
 }
 
 // countMemberReleaseRequests returns how many release requests a member has
@@ -230,7 +216,7 @@ func (d *Deps) countMemberReleaseRequests(ctx context.Context, vaultID, memberID
 
 func listReleaseRequestFiles(ctx context.Context, d *Deps, requestID string) ([]models.ReleaseRequestFile, error) {
 	rows, err := d.DB.Query(ctx, `
-		SELECT id, file_name, content_type, file_size, gcs_object
+		SELECT id, file_name, content_type, file_size, storage_key
 		FROM release_request_files
 		WHERE release_request_id = $1
 		ORDER BY created_at ASC
@@ -242,7 +228,7 @@ func listReleaseRequestFiles(ctx context.Context, d *Deps, requestID string) ([]
 	out := []models.ReleaseRequestFile{}
 	for rows.Next() {
 		var f models.ReleaseRequestFile
-		if err := rows.Scan(&f.ID, &f.FileName, &f.ContentType, &f.FileSize, &f.GCSObject); err != nil {
+		if err := rows.Scan(&f.ID, &f.FileName, &f.ContentType, &f.FileSize, &f.StorageKey); err != nil {
 			return nil, err
 		}
 		out = append(out, f)

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -10,10 +11,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"google.golang.org/api/googleapi"
-	storage "google.golang.org/api/storage/v1"
 
 	"github.com/simplysafelegacy/backend/internal/models"
+	"github.com/simplysafelegacy/backend/internal/storage"
 )
 
 // maxAttachmentBytes caps a single document-copy upload. Document copies
@@ -80,7 +80,7 @@ func (d *Deps) CreateAttachment(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if d.Storage.Bucket == "" {
+	if d.Storage == nil {
 		writeError(w, http.StatusServiceUnavailable, "file uploads are not configured")
 		return
 	}
@@ -121,7 +121,8 @@ func (d *Deps) CreateAttachment(w http.ResponseWriter, r *http.Request) {
 
 // DownloadAttachment streams the file bytes through the backend after checking
 // the caller may read the attachment's section. The object bytes never leave
-// GCS via a public or signed URL — only through this gated proxy.
+// S3 via a public or presigned URL — only through this gated proxy, so access
+// is governed by our permission rules rather than by holding a link.
 func (d *Deps) DownloadAttachment(w http.ResponseWriter, r *http.Request) {
 	v, ok := requireVault(w, r)
 	if !ok {
@@ -129,12 +130,12 @@ func (d *Deps) DownloadAttachment(w http.ResponseWriter, r *http.Request) {
 	}
 	id := chi.URLParam(r, "id")
 
-	var section, bucket, objectName, fileName, contentType string
+	var section, bucket, objectKey, fileName, contentType string
 	err := d.DB.QueryRow(r.Context(), `
-		SELECT section, gcs_bucket, gcs_object, file_name, content_type
+		SELECT section, storage_bucket, storage_key, file_name, content_type
 		FROM vault_attachments
 		WHERE id = $1 AND vault_id = $2
-	`, id, v.VaultID).Scan(&section, &bucket, &objectName, &fileName, &contentType)
+	`, id, v.VaultID).Scan(&section, &bucket, &objectKey, &fileName, &contentType)
 	if err != nil {
 		if isNoRows(err) {
 			writeError(w, http.StatusNotFound, "file not found")
@@ -149,31 +150,26 @@ func (d *Deps) DownloadAttachment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	svc, err := storage.NewService(r.Context())
-	if err != nil {
-		d.internalError(w, r, err, "failed to initialize storage")
+	if d.Storage == nil {
+		writeError(w, http.StatusServiceUnavailable, "file downloads are not configured")
 		return
 	}
-	resp, err := svc.Objects.Get(bucket, objectName).Download()
+	body, err := d.Storage.Download(r.Context(), bucket, objectKey)
 	if err != nil {
-		if gerr, ok := err.(*googleapi.Error); ok && gerr.Code == http.StatusNotFound {
+		if errors.Is(err, storage.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "file not found in storage")
 			return
 		}
 		d.internalError(w, r, err, "failed to download file")
 		return
 	}
-	defer resp.Body.Close()
+	defer body.Close()
 
-	if contentType == "" {
-		contentType = "application/octet-stream"
-	}
-	w.Header().Set("Content-Type", contentType)
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, sanitizeObjectPart(fileName)))
-	_, _ = io.Copy(w, resp.Body)
+	writeDownloadHeaders(w, fileName, contentType)
+	_, _ = io.Copy(w, body)
 }
 
-// DeleteAttachment removes a document copy. Owner-only. The GCS object is
+// DeleteAttachment removes a document copy. Owner-only. The S3 object is
 // best-effort deleted; a storage failure does not block removing the row.
 func (d *Deps) DeleteAttachment(w http.ResponseWriter, r *http.Request) {
 	v, ok := requireOwner(w, r)
@@ -182,12 +178,12 @@ func (d *Deps) DeleteAttachment(w http.ResponseWriter, r *http.Request) {
 	}
 	id := chi.URLParam(r, "id")
 
-	var bucket, objectName string
+	var bucket, objectKey string
 	err := d.DB.QueryRow(r.Context(), `
 		DELETE FROM vault_attachments
 		WHERE id = $1 AND vault_id = $2
-		RETURNING gcs_bucket, gcs_object
-	`, id, v.VaultID).Scan(&bucket, &objectName)
+		RETURNING storage_bucket, storage_key
+	`, id, v.VaultID).Scan(&bucket, &objectKey)
 	if err != nil {
 		if isNoRows(err) {
 			writeError(w, http.StatusNotFound, "file not found")
@@ -196,11 +192,11 @@ func (d *Deps) DeleteAttachment(w http.ResponseWriter, r *http.Request) {
 		d.internalError(w, r, err, "failed to delete attachment")
 		return
 	}
-	if bucket != "" && objectName != "" {
-		if delErr := deleteFromGCS(r.Context(), bucket, objectName); delErr != nil {
+	if d.Storage != nil && objectKey != "" {
+		if delErr := d.Storage.Delete(r.Context(), bucket, objectKey); delErr != nil {
 			// Row is already gone; log the orphaned object but return success.
 			d.Logger.Warn("attachment object not deleted from storage",
-				"bucket", bucket, "object", objectName, "err", delErr)
+				"bucket", bucket, "key", objectKey, "err", delErr)
 		}
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -223,35 +219,65 @@ func (d *Deps) storeAttachment(
 	}
 	attachmentID := uuid.NewString()
 	safeName := sanitizeObjectPart(header.Filename)
-	objectName := fmt.Sprintf("%s/attachments/%s/%s/%s", vaultID, section, attachmentID, safeName)
+	objectKey := storage.BuildKey(vaultID, "attachments", section, attachmentID, safeName)
 
-	if err := uploadToGCS(ctx, d.Storage.Bucket, objectName, contentType, file); err != nil {
+	if err := d.Storage.Upload(ctx, objectKey, contentType, file, header.Size); err != nil {
 		return models.VaultAttachment{}, err
 	}
 
 	var a models.VaultAttachment
 	err = d.DB.QueryRow(ctx, `
 		INSERT INTO vault_attachments (
-			id, vault_id, section, gcs_bucket, gcs_object,
+			id, vault_id, section, storage_bucket, storage_key,
 			file_name, content_type, file_size, uploaded_by
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING id, section, entry_id::text, file_name, content_type, file_size, created_at
-	`, attachmentID, vaultID, section, d.Storage.Bucket, objectName,
+	`, attachmentID, vaultID, section, d.Storage.Bucket(), objectKey,
 		header.Filename, contentType, header.Size, uploadedBy).Scan(
 		&a.ID, &a.Section, &a.EntryID, &a.FileName, &a.ContentType, &a.FileSize, &a.CreatedAt,
 	)
 	if err != nil {
 		// Roll back the just-uploaded object so we don't orphan it.
-		_ = deleteFromGCS(ctx, d.Storage.Bucket, objectName)
+		_ = d.Storage.Delete(ctx, d.Storage.Bucket(), objectKey)
 		return models.VaultAttachment{}, err
 	}
 	return a, nil
 }
 
-func deleteFromGCS(ctx context.Context, bucket, objectName string) error {
-	svc, err := storage.NewService(ctx)
-	if err != nil {
-		return err
+// safeDownloadContentTypes are the content types we will echo back to a
+// browser as-is. Everything else is served as application/octet-stream.
+//
+// Why: the stored content_type comes from the uploader's multipart header,
+// so it is attacker-controlled. Serving text/html or image/svg+xml from our
+// own origin would let an uploaded file execute script in a victim's session
+// (stored XSS) — SVG in particular is a live document, not just an image.
+// Documents are also served as attachments rather than inline, so the browser
+// downloads them instead of rendering them in our origin.
+var safeDownloadContentTypes = map[string]bool{
+	"application/pdf": true,
+	"image/jpeg":      true,
+	"image/png":       true,
+	"image/gif":       true,
+	"image/webp":      true,
+	"image/heic":      true,
+	"image/heif":      true,
+	"text/plain":      true,
+}
+
+// writeDownloadHeaders sets the response headers for a proxied object,
+// forcing a safe content type and a download disposition.
+func writeDownloadHeaders(w http.ResponseWriter, fileName, contentType string) {
+	// Strip any parameters ("image/png; charset=..") before matching.
+	base := strings.ToLower(strings.TrimSpace(strings.Split(contentType, ";")[0]))
+	if !safeDownloadContentTypes[base] {
+		base = "application/octet-stream"
 	}
-	return svc.Objects.Delete(bucket, objectName).Context(ctx).Do()
+	w.Header().Set("Content-Type", base)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	// Defence in depth: even if a type slipped through, this CSP stops the
+	// document from loading scripts or being framed.
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
+	w.Header().Set("Cache-Control", "private, no-store")
+	w.Header().Set("Content-Disposition",
+		fmt.Sprintf(`attachment; filename="%s"`, sanitizeObjectPart(fileName)))
 }

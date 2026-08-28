@@ -15,12 +15,16 @@ import (
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
 
-// Connect opens a pgx pool with sensible defaults and applies any pending
-// migrations from the embedded migrations/ directory in lexical order.
+// Connect opens a pgx pool with sensible defaults and, when migrate is
+// true, applies any pending migrations from the embedded migrations/
+// directory in lexical order.
 //
 // Each migration is recorded in schema_migrations; previously-applied files
 // are skipped. Boot is therefore idempotent and safe to re-run.
-func Connect(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
+//
+// Pass migrate=false (RUN_MIGRATIONS=false) when this process must not
+// touch the schema — the pool is still opened and the connection verified.
+func Connect(ctx context.Context, dsn string, migrate bool) (*pgxpool.Pool, error) {
 	cfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
 		return nil, fmt.Errorf("parse pool config: %w", err)
@@ -45,6 +49,11 @@ func Connect(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
 	}
 	if err != nil {
 		return nil, fmt.Errorf("connect to database: %w", err)
+	}
+
+	if !migrate {
+		log.Print("RUN_MIGRATIONS=false — skipping embedded migrations")
+		return pool, nil
 	}
 
 	if err := runMigrations(ctx, pool); err != nil {
@@ -78,6 +87,7 @@ func runMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 	sort.Strings(names)
 
+	pending := 0
 	for _, name := range names {
 		var applied bool
 		if err := pool.QueryRow(ctx,
@@ -103,6 +113,12 @@ func runMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 			return err
 		}
 		log.Printf("migration applied: %s", name)
+		pending++
+	}
+	if pending == 0 {
+		log.Printf("migrations: schema up to date (%d applied previously)", len(names))
+	} else {
+		log.Printf("migrations: applied %d new migration(s)", pending)
 	}
 	return nil
 }
