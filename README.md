@@ -32,22 +32,29 @@ generous type sizes for older readers. Tokens in `src/index.css`.
 
 ## Local development
 
-### 1. Set up Google OAuth
+### 1. Set up Auth0
 
-Google sign-in lives alongside email/password. Either path is enough on
-its own, but the OAuth client must be configured for the Google button
-to work.
+Authentication is handled by Auth0 — sign-in, sign-up, password reset,
+MFA and Google login all happen on Auth0's hosted pages. This app stores
+no passwords.
 
-1. Open [Google Cloud Console → APIs & Services → Credentials](https://console.cloud.google.com/apis/credentials).
-2. **Create OAuth client ID** → application type **Web application**.
-3. Authorized JavaScript origins:
-   - `http://localhost:8000`  *(the docker-compose frontend)*
-   - `http://localhost:5173`  *(vite dev server, optional)*
-   - Your production origin(s) — see the **Deploy** section below.
-4. Authorized redirect URIs: leave **empty** — the popup flow uses
-   `postmessage` instead.
-5. Copy the resulting **Client ID** and **Client secret** into `.env`,
-   and the **Client ID** also into `VITE_GOOGLE_CLIENT_ID` (same value).
+Create a **development** tenant (separate from production so test users
+stay out of the real directory), an API with the audience
+`https://api.simplysafelegacy.com`, and a Single Page Application whose
+allowed callback / logout / web-origin URLs include
+`http://localhost:5173` and `http://localhost:8000`.
+
+Then set in `.env.dev`:
+
+```sh
+AUTH0_DOMAIN=your-dev-tenant.us.auth0.com
+AUTH0_AUDIENCE=https://api.simplysafelegacy.com
+AUTH0_CLIENT_ID=<SPA client id>
+```
+
+Full walkthrough — including the required email-verification setting and
+the Google social connection — is in
+**[docs/auth0-runbook.md](docs/auth0-runbook.md)**.
 
 ### 2. Boot the stack
 
@@ -56,8 +63,8 @@ For local docker-compose runs, this repo uses **`.env.dev`** by default
 
 ```sh
 cp .env.example .env.dev
-# Paste Google client id / secret. Set JWT_SECRET to a 32+ char value
-# (openssl rand -hex 32). Stripe values can stay as test placeholders
+# Paste your Auth0 domain / audience / client id. Stripe values can stay
+# as test placeholders
 # for now — checkout calls will return "plan not configured" errors
 # until you wire real prices in (see Stripe section below).
 
@@ -435,7 +442,7 @@ app/
 ├── backend/
 │   ├── cmd/server/main.go     # Entry point
 │   └── internal/
-│       ├── auth/              # JWT + argon2id + Google OAuth
+│       ├── auth/              # Auth0 token verification (JWKS, RS256)
 │       ├── config/            # Env parsing
 │       ├── db/                # pgx pool + embedded migrations
 │       ├── storage/           # S3 client (upload/download/delete)
@@ -466,9 +473,6 @@ All endpoints are JSON. Authenticated routes require
 
 | Method | Path                              | Purpose                                   |
 | ------ | --------------------------------- | ----------------------------------------- |
-| POST   | `/api/auth/google`                | Google auth code → our JWT                |
-| POST   | `/api/auth/register`              | Email + password signup → our JWT         |
-| POST   | `/api/auth/login`                 | Email + password sign-in → our JWT        |
 | GET    | `/api/auth/me`                    | Current user (incl. subscription state)   |
 | GET    | `/api/me/vaults`                  | Vaults the user has any role on           |
 | GET    | `/api/vault`                      | The active vault                          |
@@ -486,19 +490,33 @@ All endpoints are JSON. Authenticated routes require
 | POST   | `/api/notifications/{id}/read`    | Mark a notification as read               |
 | GET    | `/health`                         | Liveness check (unauthenticated)          |
 
-### Auth methods
+### Auth
 
-- **Google OAuth** — popup flow, ID-token verified server-side. If a
-  matching verified email already has an account, the Google identity
-  is linked onto it.
-- **Email + password** — argon2id (m=64MiB, t=3, p=2), parameters
-  stored inline in the PHC string so they can be raised without a
-  backfill. Register rejects any existing email; login returns a
-  generic error on every failure to avoid enumeration.
+Identity is delegated to **Auth0**. There are no sign-in, sign-up, or
+password-reset endpoints in this API — the SPA redirects to Auth0's
+Universal Login, and the backend only verifies the access tokens that
+come back.
 
-Email verification, password reset, and email-based MFA are
-deliberately deferred until an email provider is in place. TOTP is the
-planned MFA path — no provider needed.
+What the backend checks on every request:
+
+- **RS256 only**, verified against the tenant's JWKS (fetched at boot,
+  refreshed in the background). Pinning the algorithm blocks the
+  `alg: none` and HMAC-confusion forgeries.
+- **`iss` and `aud`** must match this tenant and this API, so a token
+  minted for another Auth0 application can't be replayed here.
+- **`exp`** enforced, with 30s leeway for clock skew.
+
+The verified `sub` claim maps to `users.auth0_sub`. On a first sign-in
+the backend fetches the profile from Auth0's `/userinfo` and either links
+the identity onto an existing account **by verified email** — which is how
+pre-Auth0 users keep their vaults — or creates a new one. An unverified
+email is refused outright: without that check, someone could sign up as
+another person's address and be handed their vault.
+
+Because the app holds no password hashes and no token-signing secret, a
+compromise of this backend cannot yield credentials or let an attacker
+mint sessions. MFA, breached-password detection and brute-force
+protection are configured in the Auth0 tenant.
 
 ---
 
@@ -517,5 +535,6 @@ planned MFA path — no provider needed.
 - Switch Stripe keys from `sk_test_` / `pk_test_` to live, and create
   a separate webhook endpoint in live mode (the signing secret is
   per-endpoint).
-- Tighten Google OAuth's authorized origins to your real domain(s)
-  before going live.
+- In the production Auth0 tenant, set the allowed callback / logout /
+  web-origin URLs to your real domain only, turn on breached-password
+  detection and brute-force protection, and require email verification.

@@ -116,10 +116,12 @@ export function ListSection({
   section,
   entries,
   canEdit,
+  lockedMessage,
 }: {
   section: ListSectionKind;
   entries: VaultEntry[];
   canEdit: boolean;
+  lockedMessage?: string;
 }) {
   const config = LIST_SECTION_CONFIG[section];
   const [adding, setAdding] = useState(false);
@@ -141,10 +143,14 @@ export function ListSection({
       </div>
       <p className="text-sm text-muted-foreground mb-4">{config.intro}</p>
 
+      {lockedMessage && (
+        <p className="text-sm text-muted-foreground mb-4">{lockedMessage}</p>
+      )}
+
       {entries.length === 0 && !adding ? (
         <div>
           <p className="text-muted-foreground mb-4">
-            {canEdit ? config.emptyOwner : config.emptyReader}
+            {canEdit || lockedMessage ? config.emptyOwner : config.emptyReader}
           </p>
           {canEdit && (
             <button

@@ -100,6 +100,23 @@ export interface User {
   currentPeriodEnd?: string | null;
   trialEnd?: string | null;
   planLimits?: PlanLimits | null;
+
+  // When the user accepted the Terms of Service and Privacy Policy, or
+  // null if they never have (a pre-existing account, or a signup that
+  // failed between account creation and the consent call).
+  legalAcceptedAt?: string | null;
+}
+
+export interface LegalConsentStatus {
+  accepted: boolean;
+  acceptedAt?: string | null;
+  documentVersion?: string | null;
+  currentVersion: string;
+
+  // Eligibility attestations made alongside the acceptance: at least 18
+  // years old and a New Jersey resident (Privacy Policy section 1).
+  attestedAge18: boolean;
+  attestedNjResident: boolean;
 }
 
 export interface VaultMember {

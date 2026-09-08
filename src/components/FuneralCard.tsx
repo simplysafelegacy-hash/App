@@ -86,6 +86,10 @@ export function FuneralCard({
         )}
       </div>
 
+      {lockedMessage && (
+        <p className="text-sm text-muted-foreground mb-4">{lockedMessage}</p>
+      )}
+
       {!editing ? (
         funeral.hasFuneral ? (
           <dl className="space-y-3">
@@ -115,9 +119,6 @@ export function FuneralCard({
                 ? "You haven't recorded your funeral wishes yet."
                 : "Funeral wishes have not been recorded."}
             </p>
-            {lockedMessage && (
-              <p className="text-sm text-muted-foreground mb-4">{lockedMessage}</p>
-            )}
             {canEdit && (
               <button
                 type="button"

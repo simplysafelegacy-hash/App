@@ -14,6 +14,10 @@ import (
 
 const maxReleaseUploadBytes = 25 << 20
 
+// maxReleaseUploadMemory bounds in-memory buffering; maxReleaseUploadBytes is
+// the hard cap, enforced with http.MaxBytesReader.
+const maxReleaseUploadMemory = 8 << 20
+
 // A person may submit at most this many release requests per document, to keep
 // admin review from being spammed. Counted per requesting member + document.
 const maxReleaseRequestsPerDocument = 3
@@ -26,8 +30,11 @@ func (d *Deps) CreateReleaseRequest(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := r.ParseMultipartForm(maxReleaseUploadBytes); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid upload")
+	// See CreateAttachment: ParseMultipartForm bounds memory, not body size.
+	// The limit covers the whole submission, not each of the three files.
+	r.Body = http.MaxBytesReader(w, r.Body, maxReleaseUploadBytes)
+	if err := r.ParseMultipartForm(maxReleaseUploadMemory); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid or oversized upload")
 		return
 	}
 

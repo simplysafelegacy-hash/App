@@ -16,10 +16,17 @@ COPY . .
 # off so the live backend is used.
 ARG VITE_DEMO_MODE=false
 ARG VITE_API_URL=/api
-ARG VITE_GOOGLE_CLIENT_ID=
+# Auth0 settings are compiled into the bundle: the SPA needs them before it
+# can redirect to Universal Login. None of them are secret — the client id is
+# public by design and the SPA holds no client secret.
+ARG VITE_AUTH0_DOMAIN=
+ARG VITE_AUTH0_CLIENT_ID=
+ARG VITE_AUTH0_AUDIENCE=
 ENV VITE_DEMO_MODE=${VITE_DEMO_MODE}
 ENV VITE_API_URL=${VITE_API_URL}
-ENV VITE_GOOGLE_CLIENT_ID=${VITE_GOOGLE_CLIENT_ID}
+ENV VITE_AUTH0_DOMAIN=${VITE_AUTH0_DOMAIN}
+ENV VITE_AUTH0_CLIENT_ID=${VITE_AUTH0_CLIENT_ID}
+ENV VITE_AUTH0_AUDIENCE=${VITE_AUTH0_AUDIENCE}
 
 RUN npm run build
 

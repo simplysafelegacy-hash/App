@@ -144,6 +144,32 @@ func (d *Deps) UpdateEntry(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "a title is required")
 		return
 	}
+
+	// Gate on the entry's own section, not the request's — the section is
+	// immutable, and CreateEntry's check would otherwise be trivially
+	// sidestepped by editing an entry after a plan downgrade. Existing
+	// entries stay readable and deletable either way; only editing is gated.
+	var section string
+	if err := d.DB.QueryRow(r.Context(), `
+		SELECT section FROM vault_entries WHERE id = $1 AND vault_id = $2
+	`, id, v.VaultID).Scan(&section); err != nil {
+		if isNoRows(err) {
+			writeError(w, http.StatusNotFound, "entry not found")
+			return
+		}
+		d.internalError(w, r, err, "failed to load entry")
+		return
+	}
+	limits, err := d.effectivePlanLimits(r.Context(), currentUserID(r))
+	if err != nil {
+		d.internalError(w, r, err, "failed to load plan limits")
+		return
+	}
+	if !documentAllowedByPlan(limits, section) {
+		writeError(w, http.StatusForbidden, documentPlanError(section))
+		return
+	}
+
 	detailsJSON, err := marshalDetails(req.Details)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid details")

@@ -19,10 +19,10 @@ const fallbackPlans: PlanLimits[] = [
     allowWill: true,
     allowPowerOfAttorney: false,
     allowHealthCareDirective: false,
-    allowPersonalProperty: true,
+    allowPersonalProperty: false,
     allowNonProbate: false,
-    allowFuneral: true,
-    allowContacts: true,
+    allowFuneral: false,
+    allowContacts: false,
     active: true,
   },
   {
@@ -109,7 +109,8 @@ export default function Plans() {
         <header className="max-w-2xl mb-10">
           <h1 className="text-2xl md:text-3xl font-semibold mb-3">Plans</h1>
           <p className="text-base text-muted-foreground">
-            A single monthly rate. Cancel any time, no penalty.
+            A single monthly rate, billed from the day you subscribe. Cancel any
+            time, no penalty.
           </p>
         </header>
 
@@ -214,8 +215,8 @@ export default function Plans() {
               a: "Yes. You can switch at any time from the customer portal; the price is prorated and cancellation takes effect at the end of the period.",
             },
             {
-              q: "Is there a free trial?",
-              a: "A 14-day trial on every plan. You won't be charged until day 15.",
+              q: "What does the free plan cover?",
+              a: "Recording your will and where it's kept — that's it. Power of attorney, health care directive, your lists, funeral wishes, and authorized people all come with Individual or Family.",
             },
           ].map((faq) => (
             <div key={faq.q}>
@@ -231,7 +232,7 @@ export default function Plans() {
 
 function planLine(plan: PlanLimits) {
   if (plan.planCode === "free") {
-    return "For recording your own will before inviting anyone else.";
+    return "For recording your own will and nothing more. No card, no expiry.";
   }
   if (plan.planCode === "family") {
     return "For families keeping several lives in careful order.";

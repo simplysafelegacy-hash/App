@@ -21,6 +21,11 @@ import (
 // generous than maxReleaseUploadBytes.
 const maxAttachmentBytes = 50 << 20
 
+// maxAttachmentUploadMemory is how much of a multipart body is buffered in
+// memory before the rest spills to temp files. The hard size limit is
+// maxAttachmentBytes, enforced with http.MaxBytesReader.
+const maxAttachmentUploadMemory = 8 << 20
+
 // attachmentSections are the sections a document copy may be attached to.
 // Only the singular legal documents accept copies for now; list sections
 // attach files per entry in a later phase.
@@ -84,8 +89,12 @@ func (d *Deps) CreateAttachment(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "file uploads are not configured")
 		return
 	}
-	if err := r.ParseMultipartForm(maxAttachmentBytes); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid upload")
+	// ParseMultipartForm's argument only bounds how much is buffered in
+	// memory — the rest spills to temp files, so on its own it caps nothing.
+	// MaxBytesReader is what actually refuses an oversized body.
+	r.Body = http.MaxBytesReader(w, r.Body, maxAttachmentBytes)
+	if err := r.ParseMultipartForm(maxAttachmentUploadMemory); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid or oversized upload")
 		return
 	}
 	section := strings.TrimSpace(r.FormValue("section"))

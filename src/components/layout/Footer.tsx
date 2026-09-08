@@ -14,8 +14,11 @@ export function Footer() {
             <Link to="#" className="text-muted-foreground hover:text-foreground transition-colors">
               Security
             </Link>
-            <Link to="#" className="text-muted-foreground hover:text-foreground transition-colors">
+            <Link to="/legal/privacy" className="text-muted-foreground hover:text-foreground transition-colors">
               Privacy
+            </Link>
+            <Link to="/legal/terms" className="text-muted-foreground hover:text-foreground transition-colors">
+              Terms
             </Link>
             <Link to="#" className="text-muted-foreground hover:text-foreground transition-colors">
               Contact

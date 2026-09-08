@@ -53,19 +53,19 @@ services:
       # locally and require across the wire.
       DATABASE_URL: postgres://${POSTGRES_USER:-simplysafelegacy}:${POSTGRES_PASSWORD:-simplysafelegacy_dev_password}@${POSTGRES_HOST:-postgres}:${POSTGRES_REMOTE_PORT:-5432}/${POSTGRES_DB:-simplysafelegacy}?sslmode=${POSTGRES_SSLMODE:-disable}
       RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}
-      JWT_SECRET: ${JWT_SECRET:-change-me-to-a-long-random-string-of-at-least-32-chars}
-      JWT_EXPIRY: ${JWT_EXPIRY:-168h}
+      # ── Auth0 ──
+      # Only the tenant domain and API audience: token verification needs
+      # nothing secret, just Auth0's public JWKS.
+      AUTH0_DOMAIN: ${AUTH0_DOMAIN:-}
+      AUTH0_AUDIENCE: ${AUTH0_AUDIENCE:-}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:8000,http://localhost:5173}
       PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:8000}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
-      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
       STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY}
       STRIPE_PRICE_INDIVIDUAL: ${STRIPE_PRICE_INDIVIDUAL}
       STRIPE_PRICE_FAMILY: ${STRIPE_PRICE_FAMILY}
       STRIPE_PRICE_SAFEKEEPING: ${STRIPE_PRICE_SAFEKEEPING}
-      STRIPE_TRIAL_DAYS: ${STRIPE_TRIAL_DAYS:-14}
       # ── Object storage (Amazon S3) ──
       # No AWS keys here: in production the EC2 instance profile supplies
       # short-lived, auto-rotating credentials via IMDS. The static
@@ -94,7 +94,10 @@ services:
       args:
         VITE_DEMO_MODE: "false"
         VITE_API_URL: /api
-        VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-${GOOGLE_CLIENT_ID}}
+        # Baked in at build time — the SPA needs them before it can redirect.
+        VITE_AUTH0_DOMAIN: ${AUTH0_DOMAIN:-}
+        VITE_AUTH0_CLIENT_ID: ${AUTH0_CLIENT_ID:-}
+        VITE_AUTH0_AUDIENCE: ${AUTH0_AUDIENCE:-}
     restart: unless-stopped
     depends_on:
       - backend

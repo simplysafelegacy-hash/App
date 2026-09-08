@@ -170,9 +170,11 @@ export default function Settings() {
               </div>
               <p className="text-sm text-foreground">{planName}</p>
               <p className="text-sm text-muted-foreground mt-1">
-                {currentUser.planLimits
-                  ? `Up to ${currentUser.planLimits.maxAuthorizedPeople} authorized people.`
-                  : "Plan details load after billing is connected."}
+                {!currentUser.planLimits
+                  ? "Plan details load after billing is connected."
+                  : currentUser.planLimits.maxAuthorizedPeople > 0
+                    ? `Up to ${currentUser.planLimits.maxAuthorizedPeople} authorized people.`
+                    : "Your will only — no authorized people."}
               </p>
               <div className="mt-4 flex flex-col gap-2">
                 <button

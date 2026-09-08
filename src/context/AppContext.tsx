@@ -7,6 +7,8 @@ import {
   useState,
   ReactNode,
 } from "react";
+import { useAuth0 } from "@auth0/auth0-react";
+import { clearPendingConsent, consentIsPending } from "@/lib/legal";
 import {
   Notification,
   AccessTiming,
@@ -26,7 +28,7 @@ import {
   VaultSummary,
   Will,
 } from "@/lib/types";
-import { api, type EntryInput } from "@/lib/api";
+import { api, setTokenProvider, type EntryInput } from "@/lib/api";
 import { permissionsForVault, type Permissions } from "@/lib/permissions";
 import {
   mockNotifications,
@@ -56,17 +58,9 @@ interface AppContextType {
 
   notifications: Notification[];
 
-  // Auth — Google OAuth and email/password live side by side.
-  signInWithGoogle: (code: string) => Promise<{ newUser: boolean }>;
-  signUpWithPassword: (data: {
-    email: string;
-    password: string;
-    name: string;
-  }) => Promise<{ newUser: boolean }>;
-  signInWithPassword: (data: {
-    email: string;
-    password: string;
-  }) => Promise<{ newUser: boolean }>;
+  // Auth — handled entirely by Auth0's Universal Login. signIn redirects
+  // away; pass { signUp: true } to land on the sign-up tab.
+  signIn: (opts?: { signUp?: boolean }) => Promise<void>;
   logout: () => void;
 
   // Vault actions
@@ -155,6 +149,16 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export function AppProvider({ children }: { children: ReactNode }) {
+  // Auth0 owns the session. In demo mode these are inert — the provider is
+  // still mounted, but nothing calls into it.
+  const {
+    isAuthenticated: hasAuth0Session,
+    isLoading: auth0Loading,
+    loginWithRedirect,
+    logout: auth0Logout,
+    getAccessTokenSilently,
+  } = useAuth0();
+
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [vaults, setVaults] = useState<VaultSummary[]>([]);
   const [currentVaultId, setCurrentVaultId] = useState<string | null>(null);
@@ -176,33 +180,68 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [vaults],
   );
 
-  // Restore session on mount.
+  // Hand the API client a way to fetch the current Auth0 access token.
+  // Registered before any request goes out so nothing races an empty header.
+  useEffect(() => {
+    if (DEMO_MODE) return;
+    setTokenProvider(async () => {
+      try {
+        return await getAccessTokenSilently();
+      } catch {
+        // No active session — requests go out unauthenticated and 401.
+        return null;
+      }
+    });
+    return () => setTokenProvider(null);
+  }, [getAccessTokenSilently]);
+
+  // Bootstrap once Auth0 has settled. isAuthenticated is the source of
+  // truth for "is there a session"; the backend then tells us who that is.
   useEffect(() => {
     if (DEMO_MODE) {
       setLoading(false);
       return;
     }
-    const token = api.getToken();
-    if (!token) {
+    if (auth0Loading) return;
+    if (!hasAuth0Session) {
+      setCurrentUser(null);
       setLoading(false);
       return;
     }
     (async () => {
       try {
-        const user = await api.auth.me();
+        // First call also provisions the local user row on first sign-in.
+        let user = await api.auth.me();
+
+        // The user ticked the Terms/Privacy box on /signup before being
+        // sent to Auth0. This is the first moment the acceptance can be
+        // recorded: the account now exists and we hold a token. Recording
+        // it must not block sign-in — a failure here leaves the marker in
+        // place, and legalAcceptedAt stays null for follow-up.
+        if (consentIsPending()) {
+          try {
+            if (!user.legalAcceptedAt) {
+              await api.legal.accept();
+              user = await api.auth.me();
+            }
+            clearPendingConsent();
+          } catch {
+            // Keep the marker so the next sign-in retries.
+          }
+        }
+
         setCurrentUser(user);
         await loadVaults();
         const n = await api.notifications.list();
         setNotifications(n);
       } catch {
-        api.setToken(null);
         api.setVaultId(null);
       } finally {
         setLoading(false);
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [auth0Loading, hasAuth0Session]);
 
   const loadVaults = useCallback(async (): Promise<VaultSummary[]> => {
     if (DEMO_MODE) {
@@ -237,81 +276,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return list;
   }, []);
 
-  // afterAuth runs the post-token bookkeeping shared by every sign-in path.
-  const afterAuth = useCallback(
-    async (res: { token: string; user: User }): Promise<{ newUser: boolean }> => {
-      api.setToken(res.token);
-      setCurrentUser(res.user);
-      const list = await loadVaults();
-      try {
-        const n = await api.notifications.list();
-        setNotifications(n);
-      } catch {
-        // notifications are non-critical
-      }
-      return { newUser: list.length === 0 };
-    },
-    [loadVaults],
-  );
-
-  const signInWithGoogle = useCallback(
-    async (code: string): Promise<{ newUser: boolean }> => {
+  // Sign-in and sign-up both hand off to Auth0's Universal Login. The app
+  // never sees a password, so there is no credential-handling code here.
+  // screen_hint=signup opens the sign-up tab of the same hosted page.
+  const signIn = useCallback(
+    async (opts?: { signUp?: boolean }) => {
       if (DEMO_MODE) {
         setCurrentUser(mockOwner);
-        const list = await loadVaults();
-        setNotifications(mockNotifications);
-        return { newUser: list.length === 0 };
-      }
-      const res = await api.auth.google(code);
-      return afterAuth(res);
-    },
-    [loadVaults, afterAuth],
-  );
-
-  const signUpWithPassword = useCallback(
-    async (data: {
-      email: string;
-      password: string;
-      name: string;
-    }): Promise<{ newUser: boolean }> => {
-      if (DEMO_MODE) {
-        setCurrentUser({ ...mockOwner, email: data.email, name: data.name });
         await loadVaults();
         setNotifications(mockNotifications);
-        return { newUser: true };
+        return;
       }
-      const res = await api.auth.register(data);
-      return afterAuth(res);
+      await loginWithRedirect({
+        authorizationParams: opts?.signUp ? { screen_hint: "signup" } : {},
+        appState: { returnTo: window.location.pathname },
+      });
     },
-    [loadVaults, afterAuth],
-  );
-
-  const signInWithPassword = useCallback(
-    async (data: {
-      email: string;
-      password: string;
-    }): Promise<{ newUser: boolean }> => {
-      if (DEMO_MODE) {
-        setCurrentUser({ ...mockOwner, email: data.email });
-        const list = await loadVaults();
-        setNotifications(mockNotifications);
-        return { newUser: list.length === 0 };
-      }
-      const res = await api.auth.login(data);
-      return afterAuth(res);
-    },
-    [loadVaults, afterAuth],
+    [loginWithRedirect, loadVaults],
   );
 
   const logout = useCallback(() => {
-    api.setToken(null);
     api.setVaultId(null);
     setCurrentUser(null);
     setVaults([]);
     setCurrentVaultId(null);
     setVault(null);
     setNotifications([]);
-  }, []);
+    if (DEMO_MODE) return;
+    // Ends the Auth0 session too, not just the local one — otherwise the
+    // next sign-in would silently resume the old session.
+    auth0Logout({ logoutParams: { returnTo: window.location.origin } });
+  }, [auth0Logout]);
 
   const selectVault = useCallback(async (id: string) => {
     api.setVaultId(id);
@@ -879,9 +874,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       permissions,
       userOwnsVault,
       notifications,
-      signInWithGoogle,
-      signUpWithPassword,
-      signInWithPassword,
+      signIn,
       logout,
       selectVault,
       createVault,
@@ -917,9 +910,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       permissions,
       userOwnsVault,
       notifications,
-      signInWithGoogle,
-      signUpWithPassword,
-      signInWithPassword,
+      signIn,
       logout,
       selectVault,
       createVault,

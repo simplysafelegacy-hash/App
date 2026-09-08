@@ -73,19 +73,25 @@ func main() {
 		}
 	}
 
-	authSvc := auth.New(cfg.JWTSecret, cfg.JWTExpiry)
-	googleSvc := auth.NewGoogleService(cfg.GoogleClientID, cfg.GoogleClientSecret)
+	// Auth0 is the identity provider. Loading the tenant's JWKS at boot
+	// means a wrong domain or audience fails the deploy immediately rather
+	// than failing every sign-in afterwards.
+	verifier, err := auth.NewAuth0Verifier(ctx, cfg.Auth0Domain, cfg.Auth0Audience)
+	if err != nil {
+		log.Fatalf("auth0: %v", err)
+	}
+	logger.Info("auth0 ready", "issuer", verifier.Issuer(), "audience", cfg.Auth0Audience)
+
 	deps := handlers.New(
 		pool,
-		authSvc,
-		googleSvc,
+		verifier,
 		handlers.StripeConfigFrom(cfg),
 		store,
 		handlers.SupportConfigFrom(cfg),
 		logger,
 		cfg.Env == "development",
 	)
-	h := router.New(deps, authSvc, cfg.AllowedOrigins, logger)
+	h := router.New(deps, verifier, cfg.AllowedOrigins, logger)
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,

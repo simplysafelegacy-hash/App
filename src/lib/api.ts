@@ -17,6 +17,7 @@ import type {
   Notification,
   DocumentType,
   FuneralWishes,
+  LegalConsentStatus,
   ListSection,
   PlanLimits,
   ReleaseRequest,
@@ -69,6 +70,32 @@ let activeVaultId: string | null =
     ? localStorage.getItem("simplysafelegacy.vaultId")
     : null;
 
+/**
+ * Supplies the current Auth0 access token.
+ *
+ * Registered once at startup by AppContext, which owns the Auth0 SDK's
+ * getAccessTokenSilently. Tokens are deliberately NOT kept in localStorage:
+ * anything stored there is readable by injected script, whereas the SDK
+ * holds them in memory and silently refreshes them.
+ */
+let tokenProvider: (() => Promise<string | null>) | null = null;
+
+export function setTokenProvider(fn: (() => Promise<string | null>) | null) {
+  tokenProvider = fn;
+}
+
+async function authHeader(): Promise<Record<string, string>> {
+  if (!tokenProvider) return {};
+  try {
+    const token = await tokenProvider();
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  } catch {
+    // A failed refresh means the session is gone; let the request go out
+    // unauthenticated and surface as a 401 the app already handles.
+    return {};
+  }
+}
+
 async function request<T>(
   path: string,
   opts: {
@@ -78,10 +105,9 @@ async function request<T>(
     vaultScoped?: boolean;
   } = {},
 ): Promise<T> {
-  const token = localStorage.getItem("simplysafelegacy.token");
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(await authHeader()),
     ...opts.headers,
   };
   if (opts.vaultScoped && activeVaultId) {
@@ -107,10 +133,7 @@ async function request<T>(
 }
 
 async function upload<T>(path: string, body: FormData): Promise<T> {
-  const token = localStorage.getItem("simplysafelegacy.token");
-  const headers: Record<string, string> = {
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
+  const headers: Record<string, string> = { ...(await authHeader()) };
   if (activeVaultId) headers["X-Vault-Id"] = activeVaultId;
 
   const res = await fetch(`${API_URL}${path}`, {
@@ -131,10 +154,7 @@ async function download(
   path: string,
   opts: { vaultScoped?: boolean } = {},
 ): Promise<Blob> {
-  const token = localStorage.getItem("simplysafelegacy.token");
-  const headers: Record<string, string> = {
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
+  const headers: Record<string, string> = { ...(await authHeader()) };
   if (opts.vaultScoped && activeVaultId) headers["X-Vault-Id"] = activeVaultId;
   const res = await fetch(`${API_URL}${path}`, { headers });
   if (!res.ok) {
@@ -150,18 +170,7 @@ async function download(
   return res.blob();
 }
 
-export interface AuthResponse {
-  token: string;
-  user: User;
-}
-
 export const api = {
-  setToken(token: string | null) {
-    if (token) localStorage.setItem("simplysafelegacy.token", token);
-    else localStorage.removeItem("simplysafelegacy.token");
-  },
-  getToken: () => localStorage.getItem("simplysafelegacy.token"),
-
   setVaultId(id: string | null) {
     activeVaultId = id;
     if (id) localStorage.setItem("simplysafelegacy.vaultId", id);
@@ -170,22 +179,19 @@ export const api = {
   getVaultId: () => activeVaultId,
 
   auth: {
-    google: (code: string) =>
-      request<AuthResponse>("/auth/google", {
-        method: "POST",
-        body: { code },
-      }),
-    register: (data: { email: string; password: string; name: string }) =>
-      request<AuthResponse>("/auth/register", {
-        method: "POST",
-        body: data,
-      }),
-    login: (data: { email: string; password: string }) =>
-      request<AuthResponse>("/auth/login", {
-        method: "POST",
-        body: data,
-      }),
+    // Sign-in, sign-up and password reset all happen at Auth0 — the only
+    // auth call left is "who am I", which the backend answers from the
+    // access token.
     me: () => request<User>("/auth/me"),
+  },
+
+  legal: {
+    // Terms/Privacy acceptance. The checkbox is shown on /signup before the
+    // hand-off to Auth0; this records it once the account exists and the
+    // SPA holds an access token.
+    consent: () => request<LegalConsentStatus>("/legal/consent"),
+    accept: () =>
+      request<LegalConsentStatus>("/legal/consent", { method: "POST" }),
   },
 
   me: {

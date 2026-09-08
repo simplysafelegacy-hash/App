@@ -72,6 +72,11 @@ func (d *Deps) GetVault(w http.ResponseWriter, r *http.Request) {
 		filterDocumentsForAccess(full, v)
 		if !v.CanModify() {
 			full.Members = []models.VaultMember{}
+			// The emergency contact is a third party who never consented to
+			// being visible to the vault's members. Owner-only, matching
+			// what the UI has always rendered.
+			full.EmergencyContactName = ""
+			full.EmergencyContactPhone = ""
 		}
 	}
 	writeJSON(w, http.StatusOK, full)

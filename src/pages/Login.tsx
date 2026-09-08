@@ -1,134 +1,84 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { GoogleSignInButton } from "@/components/GoogleSignInButton";
+import { useAuth0 } from "@auth0/auth0-react";
 import { AuthLayout } from "@/components/layout/AuthLayout";
 import { useApp } from "@/context/AppContext";
-import { ApiError } from "@/lib/api";
-import { Eye, EyeOff } from "lucide-react";
 
+/**
+ * Sign-in hand-off.
+ *
+ * Credentials are collected by Auth0's Universal Login, not by this app —
+ * no password ever reaches our origin, so there is no form here. This page
+ * exists to keep /login a working URL (bookmarks, redirects, the marketing
+ * site) and to bounce the visitor to Auth0.
+ */
 export default function Login() {
   const navigate = useNavigate();
-  const { signInWithPassword } = useApp();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [pending, setPending] = useState(false);
+  const { signIn, isAuthenticated, loading } = useApp();
+  const { isAuthenticated: hasAuth0Session } = useAuth0();
   const [error, setError] = useState<string | null>(null);
+  // One hand-off per visit. Without this the effect can re-fire and bounce
+  // the user to Auth0 again while the first redirect is still in flight.
+  const redirected = useRef(false);
 
-  const goNext = ({ newUser }: { newUser: boolean }) =>
-    navigate(newUser ? "/create-vault" : "/dashboard");
+  useEffect(() => {
+    if (loading) return;
 
-  const onSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setPending(true);
-    try {
-      const res = await signInWithPassword({ email, password });
-      goNext(res);
-    } catch (err) {
-      const msg =
-        err instanceof ApiError
-          ? err.message
-          : err instanceof Error
-            ? err.message
-            : "Sign-in failed";
-      setError(msg);
-    } finally {
-      setPending(false);
+    // Already signed in — nothing to do here.
+    if (isAuthenticated) {
+      navigate("/dashboard", { replace: true });
+      return;
     }
-  };
+
+    // Auth0 says there is a session but the app has no user: the bootstrap
+    // call failed (backend down, or the token was rejected). Sending the
+    // user back to Auth0 would just loop — they would sign in successfully,
+    // land here, and fail the same way. Show the error instead.
+    if (hasAuth0Session) {
+      setError("Signed in, but we could not load your account. Please try again.");
+      return;
+    }
+
+    if (redirected.current) return;
+    redirected.current = true;
+    signIn().catch(() => {
+      redirected.current = false;
+      setError("Could not reach the sign-in service. Please try again.");
+    });
+  }, [loading, isAuthenticated, hasAuth0Session, signIn, navigate]);
 
   return (
     <AuthLayout
       title="Welcome back"
       subtitle="Access your Simply Safe Legacy vault."
     >
-      <GoogleSignInButton
-        label="Continue with Google"
-        onSuccess={goNext}
-        onError={(msg) => setError(msg)}
-      />
-
-      <div className="my-6 flex items-center gap-4">
-        <div className="flex-1 border-t border-border" />
-        <span className="text-base text-muted-foreground">or</span>
-        <div className="flex-1 border-t border-border" />
-      </div>
-
-      <form onSubmit={onSubmit} className="space-y-5">
-        <div>
-          <label htmlFor="email" className="field-label">
-            Email
-          </label>
-          <input
-            id="email"
-            type="email"
-            autoComplete="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@example.com"
-            className="field"
-          />
-        </div>
-        <div>
-          <div className="flex items-baseline justify-between">
-            <label htmlFor="password" className="field-label">
-              Password
-            </label>
-            <Link
-              to="/forgot-password"
-              className="link text-sm font-medium mb-1.5"
-            >
-              Forgot password?
-            </Link>
-          </div>
-          <div className="relative">
-            <input
-              id="password"
-              type={showPassword ? "text" : "password"}
-              autoComplete="current-password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Your password"
-              className="field pr-12"
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword((s) => !s)}
-              className="absolute inset-y-0 right-0 flex items-center pr-3 text-muted-foreground hover:text-foreground transition-colors"
-              aria-label={showPassword ? "Hide password" : "Show password"}
-            >
-              {showPassword ? (
-                <EyeOff size={20} strokeWidth={1.75} />
-              ) : (
-                <Eye size={20} strokeWidth={1.75} />
-              )}
-            </button>
-          </div>
-        </div>
-
-        {error && (
-          <p
-            role="alert"
-            className="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-base text-destructive"
-          >
+      {error ? (
+        <div className="space-y-5">
+          <p role="alert" className="text-base text-destructive">
             {error}
           </p>
-        )}
-
-        <button type="submit" disabled={pending} className="btn-primary w-full">
-          {pending ? "Signing in…" : "Sign in"}
-        </button>
-      </form>
-
-      <p className="text-center text-muted-foreground mt-8 text-base">
-        New here?{" "}
-        <Link to="/signup" className="link font-semibold">
-          Create an account
-        </Link>
-      </p>
+          <button
+            type="button"
+            onClick={() => {
+              setError(null);
+              void signIn();
+            }}
+            className="btn-primary w-full"
+          >
+            Try again
+          </button>
+          <p className="text-base text-muted-foreground">
+            Need an account?{" "}
+            <Link to="/signup" className="underline">
+              Create one
+            </Link>
+          </p>
+        </div>
+      ) : (
+        <p className="text-base text-muted-foreground">
+          Redirecting you to sign in…
+        </p>
+      )}
     </AuthLayout>
   );
 }

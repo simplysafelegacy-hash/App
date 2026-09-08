@@ -22,10 +22,19 @@
 
     # Modest security baseline. The frontend doesn't need referrer leaks
     # to third parties; the SPA never embeds anyone else.
+    #
+    # frame-ancestors / X-Frame-Options are the clickjacking defence: nothing
+    # legitimately frames this app (Auth0 is a redirect, Stripe Checkout is a
+    # redirect), so framing it at all means someone is overlaying the vault's
+    # release control on a page of their own. frame-ancestors governs who may
+    # frame US and does not affect the iframe the Auth0 SDK opens.
     header {
         Strict-Transport-Security "max-age=31536000; includeSubDomains"
         X-Content-Type-Options "nosniff"
         Referrer-Policy "strict-origin-when-cross-origin"
+        Content-Security-Policy "frame-ancestors 'none'"
+        X-Frame-Options "DENY"
+        Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
         -Server
     }
 

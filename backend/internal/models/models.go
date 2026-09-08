@@ -70,6 +70,13 @@ type User struct {
 	CurrentPeriodEnd   *time.Time  `json:"currentPeriodEnd,omitempty"`
 	TrialEnd           *time.Time  `json:"trialEnd,omitempty"`
 	PlanLimits         *PlanLimits `json:"planLimits,omitempty"`
+
+	// LegalAcceptedAt is when the user accepted the Terms of Service and
+	// Privacy Policy, or nil if they never have. Surfaced on /auth/me so
+	// the SPA can tell a consented account from one that slipped through
+	// (a pre-existing user, or a signup that failed between account
+	// creation and the consent POST).
+	LegalAcceptedAt *time.Time `json:"legalAcceptedAt,omitempty"`
 }
 
 // VaultMember is anyone with a relationship to a vault — owner, steward, or
@@ -100,14 +107,14 @@ type MemberPermission struct {
 // people who should receive the item; they are visible only to callers who may
 // read the entry's section.
 type VaultEntry struct {
-	ID            string                 `json:"id"`
-	Section       string                 `json:"section"`
-	Title         string                 `json:"title"`
-	Details       map[string]any         `json:"details"`
-	SortOrder     int                    `json:"sortOrder"`
+	ID            string                  `json:"id"`
+	Section       string                  `json:"section"`
+	Title         string                  `json:"title"`
+	Details       map[string]any          `json:"details"`
+	SortOrder     int                     `json:"sortOrder"`
 	Beneficiaries []VaultEntryBeneficiary `json:"beneficiaries"`
-	CreatedAt     time.Time              `json:"createdAt"`
-	UpdatedAt     time.Time              `json:"updatedAt"`
+	CreatedAt     time.Time               `json:"createdAt"`
+	UpdatedAt     time.Time               `json:"updatedAt"`
 }
 
 type VaultEntryBeneficiary struct {
@@ -189,14 +196,14 @@ type VaultDocument struct {
 }
 
 type Vault struct {
-	ID                    string          `json:"id"`
-	Name                  string          `json:"name"`
-	OwnerID               string          `json:"ownerId"`
-	OwnerName             string          `json:"ownerName"`
-	OwnerEmail            string          `json:"ownerEmail"`
-	OwnerPhone            string          `json:"ownerPhone"`
-	EmergencyContactName  string          `json:"emergencyContactName"`
-	EmergencyContactPhone string          `json:"emergencyContactPhone"`
+	ID                    string            `json:"id"`
+	Name                  string            `json:"name"`
+	OwnerID               string            `json:"ownerId"`
+	OwnerName             string            `json:"ownerName"`
+	OwnerEmail            string            `json:"ownerEmail"`
+	OwnerPhone            string            `json:"ownerPhone"`
+	EmergencyContactName  string            `json:"emergencyContactName"`
+	EmergencyContactPhone string            `json:"emergencyContactPhone"`
 	ReleasedAt            *time.Time        `json:"releasedAt,omitempty"`
 	Will                  Will              `json:"will"`
 	Documents             []VaultDocument   `json:"documents"`

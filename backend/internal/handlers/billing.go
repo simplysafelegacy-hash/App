@@ -84,17 +84,17 @@ func (d *Deps) CreateCheckout(w http.ResponseWriter, r *http.Request) {
 			"user_id": u.ID,
 			"plan":    req.Plan,
 		},
-	}
-	if d.Stripe.TrialDays > 0 {
-		params.SubscriptionData = &stripe.CheckoutSessionSubscriptionDataParams{
-			TrialPeriodDays: stripe.Int64(int64(d.Stripe.TrialDays)),
+		// Stamp the same identifiers on the subscription so
+		// planFromSubscription can read the plan straight off webhook
+		// events instead of matching price ids. There is no trial period:
+		// the free tier is the free tier, and paying starts billing at once.
+		SubscriptionData: &stripe.CheckoutSessionSubscriptionDataParams{
 			Metadata: map[string]string{
 				"user_id": u.ID,
 				"plan":    req.Plan,
 			},
-		}
+		},
 	}
-
 	sess, err := checkoutsession.New(params)
 	if err != nil {
 		d.internalError(w, r, err, "failed to create checkout session")

@@ -3,8 +3,10 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5"
@@ -19,13 +21,16 @@ import (
 // construct via New.
 type Deps struct {
 	DB      *pgxpool.Pool
-	Auth    *auth.Service
-	Google  *auth.GoogleService
+	Auth0   *auth.Auth0Verifier
 	Stripe  StripeConfig
 	Storage *storage.Client
 	Support SupportConfig
 	Logger  *slog.Logger
 	Dev     bool
+
+	// auth0Cache memoises Auth0 subject -> local user for the lifetime of a
+	// few requests. See auth0.go for why this cannot grant stale authority.
+	auth0Cache *auth0UserCache
 }
 
 // StripeConfig is the subset of config the billing handler needs. Carved
@@ -38,7 +43,6 @@ type StripeConfig struct {
 	PriceIndividual  string
 	PriceFamily      string
 	PriceSafekeeping string
-	TrialDays        int
 }
 
 type SupportConfig struct {
@@ -81,14 +85,12 @@ func StripeConfigFrom(c *config.Config) StripeConfig {
 		PriceIndividual:  c.StripePriceIndividual,
 		PriceFamily:      c.StripePriceFamily,
 		PriceSafekeeping: c.StripePriceSafekeeping,
-		TrialDays:        c.StripeTrialDays,
 	}
 }
 
 func New(
 	db *pgxpool.Pool,
-	authSvc *auth.Service,
-	google *auth.GoogleService,
+	auth0 *auth.Auth0Verifier,
 	stripe StripeConfig,
 	store *storage.Client,
 	support SupportConfig,
@@ -98,7 +100,16 @@ func New(
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Deps{DB: db, Auth: authSvc, Google: google, Stripe: stripe, Storage: store, Support: support, Logger: logger, Dev: dev}
+	return &Deps{
+		DB:         db,
+		Auth0:      auth0,
+		Stripe:     stripe,
+		Storage:    store,
+		Support:    support,
+		Logger:     logger,
+		Dev:        dev,
+		auth0Cache: newAuth0UserCache(60 * time.Second),
+	}
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -136,8 +147,13 @@ func (d *Deps) internalError(w http.ResponseWriter, r *http.Request, err error, 
 	writeJSON(w, http.StatusInternalServerError, body)
 }
 
+// maxJSONBodyBytes caps a JSON request body. Nothing this API accepts as
+// JSON is large — the biggest is a member's permission list — so a generous
+// ceiling still refuses a body sent purely to consume memory.
+const maxJSONBodyBytes = 1 << 20
+
 func decodeBody(r *http.Request, dst any) error {
-	dec := json.NewDecoder(r.Body)
+	dec := json.NewDecoder(io.LimitReader(r.Body, maxJSONBodyBytes))
 	dec.DisallowUnknownFields()
 	return dec.Decode(dst)
 }

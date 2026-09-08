@@ -143,12 +143,22 @@ func (d *Deps) CreateMember(w http.ResponseWriter, r *http.Request) {
 			date_of_birth = EXCLUDED.date_of_birth,
 			access_timing = EXCLUDED.access_timing,
 			user_id = COALESCE(EXCLUDED.user_id, vault_members.user_id)
+		-- Never let this path touch the owner membership row: adding a member
+		-- whose email matches the vault owner would otherwise demote them to
+		-- a steward and lock them out of their own vault.
+		WHERE vault_members.role <> 'owner'
 		RETURNING id, COALESCE(user_id::text, ''), name, email, role::text,
 		          COALESCE(date_of_birth::text, ''), COALESCE(access_timing, 'now')
 	`, v.VaultID, linkedUserID, req.Name, req.Email, req.Role, dob, req.AccessTiming).Scan(
 		&m.ID, &m.UserID, &m.Name, &m.Email, &m.Role, &m.DateOfBirth, &m.AccessTiming,
 	)
 	if err != nil {
+		if isNoRows(err) {
+			// The only suppressed conflict is the owner's own row.
+			writeError(w, http.StatusBadRequest,
+				"that email already belongs to the vault owner")
+			return
+		}
 		d.internalError(w, r, err, "failed to create member")
 		return
 	}

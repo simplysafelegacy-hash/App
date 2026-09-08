@@ -2,7 +2,12 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Layout } from "@/components/layout/Layout";
 import { useApp } from "@/context/AppContext";
-import { planAllowsDocument, roleLabel, willLocationLabel } from "@/lib/permissions";
+import {
+  planAllowsDocument,
+  roleLabel,
+  sectionLabel,
+  willLocationLabel,
+} from "@/lib/permissions";
 import { RoleBadge, isVaultIdentityHidden, vaultAccessLabel, vaultDisplayName, vaultOwnerName } from "@/components/VaultSwitcher";
 import { ListSection } from "@/components/ListSection";
 import { FuneralCard } from "@/components/FuneralCard";
@@ -169,19 +174,16 @@ export default function Dashboard() {
   const listSectionsToShow = LIST_SECTIONS.map((section) => {
     const sectionEntries = (vault.entries ?? []).filter((e) => e.section === section);
     const planAllows = planAllowsDocument(planLimits, section);
-    // Owners see the section when their plan includes it (to add items) or when
-    // it already holds items. Readers see it only when they were given entries —
-    // the backend omits sections they can't read.
-    const show = permissions.canModify
-      ? planAllows || sectionEntries.length > 0
-      : sectionEntries.length > 0;
+    // Owners always see the section: included ones to add to, excluded ones
+    // locked, so the paywall is visible rather than the section vanishing.
+    // Readers see it only when they were given entries — the backend omits
+    // sections they can't read.
+    const show = permissions.canModify || sectionEntries.length > 0;
     return { section, sectionEntries, planAllows, show };
   }).filter((s) => s.show);
 
   const funeralAllowed = planAllowsDocument(planLimits, "funeral");
-  const showFuneral = permissions.canModify
-    ? funeralAllowed || vault.funeral.hasFuneral
-    : vault.funeral.hasFuneral;
+  const showFuneral = permissions.canModify || vault.funeral.hasFuneral;
 
   const readiness = permissions.isOwner
     ? computeReadiness(dashboardDocuments, planLimits, vault, showFuneral, funeralAllowed)
@@ -280,6 +282,11 @@ export default function Dashboard() {
                   section={section}
                   entries={sectionEntries}
                   canEdit={permissions.canModify && planAllows}
+                  lockedMessage={
+                    permissions.canModify && !planAllows
+                      ? `${planLimits?.name ?? "Your current"} plan does not include ${sectionLabel[section].toLowerCase()}.`
+                      : undefined
+                  }
                 />
               ))}
 
@@ -1289,8 +1296,11 @@ function PeopleCard({
         {canEdit && typeof maxAuthorizedPeople === "number" && (
           <>
             {" "}
-            Your plan allows {maxAuthorizedPeople} authorized{" "}
-            {maxAuthorizedPeople === 1 ? "person" : "people"}.
+            {maxAuthorizedPeople === 0
+              ? "Your plan does not include authorized people."
+              : `Your plan allows ${maxAuthorizedPeople} authorized ${
+                  maxAuthorizedPeople === 1 ? "person" : "people"
+                }.`}
           </>
         )}
       </p>

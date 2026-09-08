@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	"time"
 )
 
 // Config holds all runtime configuration resolved from the environment.
@@ -12,8 +11,6 @@ type Config struct {
 	Env            string
 	Port           string
 	DatabaseURL    string
-	JWTSecret      string
-	JWTExpiry      time.Duration
 	AllowedOrigins []string
 
 	// RunMigrations controls whether embedded migrations are applied at
@@ -23,9 +20,12 @@ type Config struct {
 	// place.
 	RunMigrations bool
 
-	// Google OAuth — required alongside email/password auth.
-	GoogleClientID     string
-	GoogleClientSecret string
+	// Auth0 — the identity provider. Sign-in, sign-up, password reset, and
+	// social login all happen at Auth0; this backend only verifies the
+	// access tokens it issues. There is no client secret here: the SPA is a
+	// public client, and token verification needs only the public JWKS.
+	Auth0Domain   string
+	Auth0Audience string
 
 	// Stripe — required for billing. Test keys are fine in development.
 	StripeSecretKey        string
@@ -34,7 +34,6 @@ type Config struct {
 	StripePriceIndividual  string
 	StripePriceFamily      string
 	StripePriceSafekeeping string
-	StripeTrialDays        int
 
 	// Amazon S3 — vault documents and release proof uploads.
 	// Keys are {vault_id}/attachments/... and
@@ -65,15 +64,13 @@ type Config struct {
 
 func Load() (*Config, error) {
 	c := &Config{
-		Env:                getenv("APP_ENV", "development"),
-		Port:               getenv("PORT", "8080"),
-		DatabaseURL:        os.Getenv("DATABASE_URL"),
-		JWTSecret:          os.Getenv("JWT_SECRET"),
-		JWTExpiry:          parseDuration(getenv("JWT_EXPIRY", "168h")), // 7d
-		AllowedOrigins:     splitCSV(getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:8000")),
-		RunMigrations:      getenvBool("RUN_MIGRATIONS", true),
-		GoogleClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
-		GoogleClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
+		Env:            getenv("APP_ENV", "development"),
+		Port:           getenv("PORT", "8080"),
+		DatabaseURL:    os.Getenv("DATABASE_URL"),
+		AllowedOrigins: splitCSV(getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:8000")),
+		RunMigrations:  getenvBool("RUN_MIGRATIONS", true),
+		Auth0Domain:    os.Getenv("AUTH0_DOMAIN"),
+		Auth0Audience:  os.Getenv("AUTH0_AUDIENCE"),
 
 		StripeSecretKey:        os.Getenv("STRIPE_SECRET_KEY"),
 		StripeWebhookSecret:    os.Getenv("STRIPE_WEBHOOK_SECRET"),
@@ -81,7 +78,6 @@ func Load() (*Config, error) {
 		StripePriceIndividual:  os.Getenv("STRIPE_PRICE_INDIVIDUAL"),
 		StripePriceFamily:      os.Getenv("STRIPE_PRICE_FAMILY"),
 		StripePriceSafekeeping: os.Getenv("STRIPE_PRICE_SAFEKEEPING"),
-		StripeTrialDays:        getenvInt("STRIPE_TRIAL_DAYS", 14),
 		S3Bucket:               os.Getenv("S3_BUCKET"),
 		AWSRegion:              os.Getenv("AWS_REGION"),
 		S3KMSKeyID:             os.Getenv("S3_KMS_KEY_ID"),
@@ -101,14 +97,8 @@ func Load() (*Config, error) {
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")
 	}
-	if c.JWTSecret == "" {
-		return nil, fmt.Errorf("JWT_SECRET is required")
-	}
-	if len(c.JWTSecret) < 32 {
-		return nil, fmt.Errorf("JWT_SECRET must be at least 32 characters")
-	}
-	if c.GoogleClientID == "" || c.GoogleClientSecret == "" {
-		return nil, fmt.Errorf("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are required")
+	if c.Auth0Domain == "" || c.Auth0Audience == "" {
+		return nil, fmt.Errorf("AUTH0_DOMAIN and AUTH0_AUDIENCE are required")
 	}
 	// Document storage is required in production — a vault that silently
 	// cannot store documents is worse than one that refuses to start.
@@ -136,18 +126,6 @@ func getenv(key, fallback string) string {
 	return fallback
 }
 
-func getenvInt(key string, fallback int) int {
-	v := os.Getenv(key)
-	if v == "" {
-		return fallback
-	}
-	n, err := strconv.Atoi(v)
-	if err != nil {
-		return fallback
-	}
-	return n
-}
-
 // getenvBool reads a boolean env var. Anything strconv.ParseBool accepts
 // works ("1"/"0", "true"/"false", "t"/"f"); an unset or unparseable value
 // falls back so a typo can't silently flip behaviour off.
@@ -161,14 +139,6 @@ func getenvBool(key string, fallback bool) bool {
 		return fallback
 	}
 	return b
-}
-
-func parseDuration(s string) time.Duration {
-	d, err := time.ParseDuration(s)
-	if err != nil {
-		return 168 * time.Hour
-	}
-	return d
 }
 
 func splitCSV(s string) []string {

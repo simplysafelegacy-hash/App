@@ -1,0 +1,23 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "Bucket",
+      "Effect": "Allow",
+      "Action": ["s3:ListBucket"],
+      "Resource": "arn:aws:s3:::ssl-prod-vault-documents"
+    },
+    {
+      "Sid": "Objects",
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+      "Resource": "arn:aws:s3:::ssl-prod-vault-documents/*"
+    },
+    {
+      "Sid": "KMS",
+      "Effect": "Allow",
+      "Action": ["kms:Encrypt", "kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"],
+      "Resource": "arn:aws:kms:us-east-1:895492487253:key/9f908370-e0d1-478e-bf90-f23ea574c36d"
+    }
+  ]
+}

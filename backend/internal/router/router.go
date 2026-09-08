@@ -13,7 +13,7 @@ import (
 	"github.com/simplysafelegacy/backend/internal/handlers"
 )
 
-func New(h *handlers.Deps, authSvc *auth.Service, allowedOrigins []string, logger *slog.Logger) http.Handler {
+func New(h *handlers.Deps, verifier *auth.Auth0Verifier, allowedOrigins []string, logger *slog.Logger) http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
@@ -39,20 +39,27 @@ func New(h *handlers.Deps, authSvc *auth.Service, allowedOrigins []string, logge
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
 
+	// requireAuth verifies an Auth0 access token and resolves the local user.
+	requireAuth := auth.Auth0Middleware(verifier, h)
+
 	r.Route("/api", func(r chi.Router) {
-		// Public auth + Stripe webhook. The webhook is intentionally
-		// unauthenticated — the signature header proves authenticity.
-		r.Post("/auth/google", h.GoogleAuth)
-		r.Post("/auth/register", h.Register)
-		r.Post("/auth/login", h.Login)
+		// Public endpoints. Sign-in, sign-up, and password reset all happen
+		// at Auth0 — this API has no unauthenticated auth surface left. The
+		// Stripe webhook is intentionally unauthenticated; its signature
+		// header proves authenticity.
 		r.Get("/billing/plans", h.ListBillingPlans)
 		r.Post("/billing/webhook", h.Webhook)
 
 		// Authenticated, no vault scope required.
 		r.Group(func(r chi.Router) {
-			r.Use(authSvc.Middleware)
+			r.Use(requireAuth)
 
 			r.Get("/auth/me", h.Me)
+
+			// Terms/Privacy acceptance. Collected on /signup before the
+			// Auth0 hand-off, then posted here once the account exists.
+			r.Get("/legal/consent", h.GetLegalConsent)
+			r.Post("/legal/consent", h.AcceptLegal)
 			r.Get("/me/vaults", h.ListMyVaults)
 			r.Post("/vault", h.CreateVault)
 
@@ -63,7 +70,7 @@ func New(h *handlers.Deps, authSvc *auth.Service, allowedOrigins []string, logge
 
 		// Platform admin operations.
 		r.Group(func(r chi.Router) {
-			r.Use(authSvc.Middleware)
+			r.Use(requireAuth)
 			r.Use(h.AdminMiddleware)
 
 			r.Get("/admin/release-requests", h.AdminListReleaseRequests)
@@ -74,7 +81,7 @@ func New(h *handlers.Deps, authSvc *auth.Service, allowedOrigins []string, logge
 
 		// Authenticated + scoped to a specific vault via X-Vault-Id.
 		r.Group(func(r chi.Router) {
-			r.Use(authSvc.Middleware)
+			r.Use(requireAuth)
 			r.Use(h.VaultMiddleware)
 
 			r.Get("/vault", h.GetVault)
@@ -105,7 +112,7 @@ func New(h *handlers.Deps, authSvc *auth.Service, allowedOrigins []string, logge
 
 		// Authenticated, notifications are user-global (cross-vault).
 		r.Group(func(r chi.Router) {
-			r.Use(authSvc.Middleware)
+			r.Use(requireAuth)
 			r.Get("/notifications", h.ListNotifications)
 			r.Post("/notifications/{id}/read", h.MarkNotificationRead)
 		})

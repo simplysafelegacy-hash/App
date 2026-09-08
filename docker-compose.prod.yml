@@ -30,7 +30,15 @@ services:
   backend:
     ports: []
     environment:
-      APP_ENV: production
+      # APP_ENV comes from the pushed .env (.env.dev → development,
+      # .env.prod → production) rather than being hardcoded here. This
+      # overlay is about *topology* — Caddy in front, no exposed ports —
+      # and both targets deploy with it, so pinning "production" here also
+      # forced it onto the dev VM. That mattered: APP_ENV gates fail-fast
+      # rules in the backend (an unreachable S3 bucket is a warning in
+      # development but log.Fatalf otherwise, see cmd/server/main.go), so
+      # a dev deploy would crash-loop where it should have warned.
+      APP_ENV: ${APP_ENV:-production}
 
   frontend:
     ports: []
