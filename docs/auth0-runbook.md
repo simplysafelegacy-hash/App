@@ -128,6 +128,37 @@ exports.onExecutePostLogin = async (event, api) => {
 
 Deploy it and drag it into the **Login** flow.
 
+## 6b. Email templates — check the redirect URL
+
+Enabling *Requires Email Verification* above means every new sign-up detours
+through a verification email before it can reach the app. Where that email
+sends the user afterwards is a **tenant-level** setting, not part of the
+per-application callback allowlist in §3 — so it does not follow the
+dev/production split automatically, and a value set once while building the
+dev tenant will happily send production users to the dev host.
+
+**Branding → Email Templates → Verification Email → Redirect To**
+
+| Tenant | Redirect To |
+| --- | --- |
+| Production | `https://app.simplysafelegacy.com` |
+| Development | `https://dev.simplysafelegacy.com` |
+
+Check the same field on **Change Password** and **Welcome** if those are
+enabled. Two related tenant-level settings can also strand a user on the wrong
+host — audit them at the same time:
+
+- **Applications → (SPA) → Settings → Application Login URI**
+- **Settings → Advanced → Default Login Route**, and **Settings → General →
+  Default App**
+
+> Symptom to recognise: sign-in and sign-up appear to work, but a *newly
+> registered* user lands on the wrong environment after clicking the
+> verification link, while existing users never see the problem. Nothing in
+> this repo can cause that — the SPA builds every redirect from
+> `window.location.origin`, so it cannot name another host. If a user crosses
+> environments, the redirect came from Auth0 or from `PUBLIC_APP_URL`.
+
 ## 7. Google social connection
 
 Replaces the app's old direct Google OAuth integration.
@@ -238,6 +269,10 @@ In the browser:
 
 - Visiting `/login` redirects to Auth0's hosted page.
 - After signing in you land on `/dashboard` and the URL has no `?code=`.
+- **Register a brand-new test user and click the verification link.** It must
+  land on the *same* host you signed up on — this is the one step that
+  exercises the email-template redirect from §6b, and the only one that
+  catches a production tenant still pointing at dev.
 - A pre-existing user still sees their vault (proves email linking worked).
 - Signing out returns to the landing page, and hitting Back does not restore
   the session.

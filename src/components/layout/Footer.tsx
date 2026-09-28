@@ -11,18 +11,18 @@ export function Footer() {
             <Link to="/plans" className="text-muted-foreground hover:text-foreground transition-colors">
               Plans
             </Link>
-            <Link to="#" className="text-muted-foreground hover:text-foreground transition-colors">
-              Security
-            </Link>
             <Link to="/legal/privacy" className="text-muted-foreground hover:text-foreground transition-colors">
               Privacy
             </Link>
             <Link to="/legal/terms" className="text-muted-foreground hover:text-foreground transition-colors">
               Terms
             </Link>
-            <Link to="#" className="text-muted-foreground hover:text-foreground transition-colors">
+            <a
+              href="mailto:simplysafelegacy@gmail.com"
+              className="text-muted-foreground hover:text-foreground transition-colors"
+            >
               Contact
-            </Link>
+            </a>
           </nav>
         </div>
         <div className="mt-7 pt-5 border-t border-border">
