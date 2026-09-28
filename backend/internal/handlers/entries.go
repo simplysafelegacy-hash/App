@@ -24,10 +24,10 @@ func entrySectionAllowed(section string) bool {
 }
 
 type entryReq struct {
-	Section       string                        `json:"section"`
-	Title         string                        `json:"title"`
-	Details       map[string]any                `json:"details"`
-	SortOrder     int                           `json:"sortOrder"`
+	Section       string                         `json:"section"`
+	Title         string                         `json:"title"`
+	Details       map[string]any                 `json:"details"`
+	SortOrder     int                            `json:"sortOrder"`
 	Beneficiaries []models.VaultEntryBeneficiary `json:"beneficiaries"`
 }
 

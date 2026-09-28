@@ -23,6 +23,7 @@ func paidLimits(people int) models.PlanLimits {
 		Name:                     "Individual",
 		MaxAuthorizedPeople:      people,
 		AllowWill:                true,
+		AllowTrust:               true,
 		AllowPowerOfAttorney:     true,
 		AllowHealthCareDirective: true,
 		AllowPersonalProperty:    true,
@@ -38,6 +39,7 @@ func TestFreePlanAllowsOnlyTheWill(t *testing.T) {
 		t.Fatal("free plan must include the will")
 	}
 	for _, section := range []string{
+		models.SectionTrust,
 		models.SectionPowerOfAttorney, models.SectionHealthCareDirective,
 		models.SectionPersonalProperty, models.SectionNonProbate,
 		models.SectionFuneral, models.SectionContacts,
@@ -75,7 +77,7 @@ func TestFreePlanGrantsNoPermissions(t *testing.T) {
 func TestPaidPlansDifferOnlyInPeopleCount(t *testing.T) {
 	individual, family := paidLimits(4), paidLimits(15)
 	for _, section := range []string{
-		models.SectionWill, models.SectionPowerOfAttorney,
+		models.SectionWill, models.SectionTrust, models.SectionPowerOfAttorney,
 		models.SectionHealthCareDirective, models.SectionPersonalProperty,
 		models.SectionNonProbate, models.SectionFuneral, models.SectionContacts,
 	} {

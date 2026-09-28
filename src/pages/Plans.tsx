@@ -17,6 +17,7 @@ const fallbackPlans: PlanLimits[] = [
     displayOrder: 10,
     maxAuthorizedPeople: 0,
     allowWill: true,
+    allowTrust: false,
     allowPowerOfAttorney: false,
     allowHealthCareDirective: false,
     allowPersonalProperty: false,
@@ -33,6 +34,7 @@ const fallbackPlans: PlanLimits[] = [
     displayOrder: 20,
     maxAuthorizedPeople: 4,
     allowWill: true,
+    allowTrust: true,
     allowPowerOfAttorney: true,
     allowHealthCareDirective: true,
     allowPersonalProperty: true,
@@ -49,6 +51,7 @@ const fallbackPlans: PlanLimits[] = [
     displayOrder: 30,
     maxAuthorizedPeople: 15,
     allowWill: true,
+    allowTrust: true,
     allowPowerOfAttorney: true,
     allowHealthCareDirective: true,
     allowPersonalProperty: true,
@@ -216,7 +219,7 @@ export default function Plans() {
             },
             {
               q: "What does the free plan cover?",
-              a: "Recording your will and where it's kept — that's it. Power of attorney, health care directive, your lists, funeral wishes, and authorized people all come with Individual or Family.",
+              a: "Recording your will and where it's kept — that's it. Your trust, power of attorney, health care directive, lists, funeral wishes, and authorized people all come with Individual or Family.",
             },
           ].map((faq) => (
             <div key={faq.q}>
@@ -243,6 +246,7 @@ function planLine(plan: PlanLimits) {
 function planFeatures(plan: PlanLimits) {
   const features = ["One vault owner"];
   if (plan.allowWill) features.push("Record your will and where it's kept");
+  if (plan.allowTrust) features.push("Record your trust");
   if (plan.allowPowerOfAttorney) features.push("Record power of attorney");
   if (plan.allowHealthCareDirective) features.push("Record health care directive");
   if (plan.maxAuthorizedPeople > 0) {

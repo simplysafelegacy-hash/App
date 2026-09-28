@@ -382,6 +382,7 @@ function permissionOptionAllowedByPlan(
 function isStewardSuccessorSection(documentType: string): boolean {
   return (
     documentType === "will" ||
+    documentType === "trust" ||
     documentType === "personal_property" ||
     documentType === "non_probate" ||
     documentType === "funeral" ||
@@ -430,6 +431,11 @@ function PermissionPicker({
       label: `${documentLabel.will} access`,
       permission: { documentType: "will", permissionRole: "steward", accessTiming: "now", hidden: false },
       disabled: !permissionOptionAllowedByPlan(planLimits, "will"),
+    },
+    {
+      label: `${documentLabel.trust} access`,
+      permission: { documentType: "trust", permissionRole: "steward", accessTiming: "now", hidden: false },
+      disabled: !permissionOptionAllowedByPlan(planLimits, "trust"),
     },
     {
       label: "Power of Attorney Agent",

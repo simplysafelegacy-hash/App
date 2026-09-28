@@ -10,15 +10,22 @@ export type DocumentLocationType =
 
 export type WillLocationType = DocumentLocationType;
 
+/**
+ * The singular legal documents. Will and trust are death-operative
+ * (steward/successor access, released on proof of death); power of attorney
+ * and health care directive are incapacity-operative and carry their own
+ * roles. Keep in sync with backend models.Section*.
+ */
 export type DocumentType =
   | "will"
+  | "trust"
   | "power_of_attorney"
   | "health_care_directive";
 
 /**
- * Every gate-able section of a vault. The three DocumentTypes above are
- * singular documents (a will, a POA, a directive) inlined onto the vault
- * row. The list/record sections below are backed by vault entries or a
+ * Every gate-able section of a vault. The four DocumentTypes above are
+ * singular documents (a will, a trust, a POA, a directive) inlined onto the
+ * vault row. The list/record sections below are backed by vault entries or a
  * dedicated record but share the same access model — the permission engine
  * gates them all the same way. Keep in sync with backend models.Section*.
  */
@@ -60,6 +67,7 @@ export interface PlanLimits {
   displayOrder: number;
   maxAuthorizedPeople: number;
   allowWill: boolean;
+  allowTrust: boolean;
   allowPowerOfAttorney: boolean;
   allowHealthCareDirective: boolean;
   allowPersonalProperty: boolean;

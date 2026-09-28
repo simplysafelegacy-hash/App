@@ -942,6 +942,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
 const documentTypes: DocumentType[] = [
   "will",
+  "trust",
   "power_of_attorney",
   "health_care_directive",
 ];

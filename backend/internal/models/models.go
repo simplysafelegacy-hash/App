@@ -24,11 +24,16 @@ const (
 )
 
 // Vault sections. Each is a "document type" the permission engine can gate.
-// The first three are singular documents inlined onto the vaults row; the
+// The first four are singular documents inlined onto the vaults row; the
 // list/record sections below are backed by vault_entries (or a dedicated
 // record) and share the same access model.
+//
+// Will and trust are the death-operative pair — steward/successor access, and
+// release on proof of death. Power of attorney and health care directive are
+// the incapacity pair, with their own roles and their own proof.
 const (
 	SectionWill                = "will"
+	SectionTrust               = "trust"
 	SectionPowerOfAttorney     = "power_of_attorney"
 	SectionHealthCareDirective = "health_care_directive"
 	SectionPersonalProperty    = "personal_property"
@@ -45,6 +50,7 @@ type PlanLimits struct {
 	DisplayOrder             int    `json:"displayOrder"`
 	MaxAuthorizedPeople      int    `json:"maxAuthorizedPeople"`
 	AllowWill                bool   `json:"allowWill"`
+	AllowTrust               bool   `json:"allowTrust"`
 	AllowPowerOfAttorney     bool   `json:"allowPowerOfAttorney"`
 	AllowHealthCareDirective bool   `json:"allowHealthCareDirective"`
 	AllowPersonalProperty    bool   `json:"allowPersonalProperty"`

@@ -121,11 +121,13 @@ func (d *Deps) CreateVault(w http.ResponseWriter, r *http.Request) {
 
 	var (
 		v      models.Vault
+		trust  models.VaultDocument
 		poa    models.VaultDocument
 		health models.VaultDocument
 	)
-	poa.Type = "power_of_attorney"
-	health.Type = "health_care_directive"
+	trust.Type = models.SectionTrust
+	poa.Type = models.SectionPowerOfAttorney
+	health.Type = models.SectionHealthCareDirective
 	err = tx.QueryRow(ctx, `
 		INSERT INTO vaults (
 			owner_id, name, owner_name, owner_email, owner_phone,
@@ -142,6 +144,8 @@ func (d *Deps) CreateVault(w http.ResponseWriter, r *http.Request) {
 		          emergency_contact_name, emergency_contact_phone, released_at, created_at,
 		          has_will, COALESCE(will_location_type,''), COALESCE(will_location_address,''),
 		          COALESCE(will_location_description,''), will_updated_at,
+		          has_trust, COALESCE(trust_location_type,''), COALESCE(trust_location_address,''),
+		          COALESCE(trust_location_description,''), trust_updated_at,
 		          has_power_of_attorney, COALESCE(poa_location_type,''), COALESCE(poa_location_address,''),
 		          COALESCE(poa_location_description,''), poa_updated_at,
 		          has_health_care_directive, COALESCE(health_care_location_type,''), COALESCE(health_care_location_address,''),
@@ -154,6 +158,8 @@ func (d *Deps) CreateVault(w http.ResponseWriter, r *http.Request) {
 		&v.EmergencyContactName, &v.EmergencyContactPhone, &v.ReleasedAt, &v.CreatedAt,
 		&v.Will.HasWill, &v.Will.LocationType, &v.Will.LocationAddress,
 		&v.Will.LocationDescription, &v.Will.UpdatedAt,
+		&trust.HasDocument, &trust.LocationType, &trust.LocationAddress,
+		&trust.LocationDescription, &trust.UpdatedAt,
 		&poa.HasDocument, &poa.LocationType, &poa.LocationAddress,
 		&poa.LocationDescription, &poa.UpdatedAt,
 		&health.HasDocument, &health.LocationType, &health.LocationAddress,
@@ -181,7 +187,7 @@ func (d *Deps) CreateVault(w http.ResponseWriter, r *http.Request) {
 	}
 
 	v.Members = []models.VaultMember{}
-	v.Documents = documentsFromFields(v.Will, poa, health)
+	v.Documents = documentsFromFields(v.Will, trust, poa, health)
 	v.Attachments = []models.VaultAttachment{}
 	v.Entries = []models.VaultEntry{}
 	writeJSON(w, http.StatusCreated, v)
@@ -397,16 +403,20 @@ func (d *Deps) ResealDocumentRelease(w http.ResponseWriter, r *http.Request) {
 func loadVault(ctx context.Context, d *Deps, vaultID string) (*models.Vault, error) {
 	var (
 		v      models.Vault
+		trust  models.VaultDocument
 		poa    models.VaultDocument
 		health models.VaultDocument
 	)
-	poa.Type = "power_of_attorney"
-	health.Type = "health_care_directive"
+	trust.Type = models.SectionTrust
+	poa.Type = models.SectionPowerOfAttorney
+	health.Type = models.SectionHealthCareDirective
 	err := d.DB.QueryRow(ctx, `
 		SELECT id, name, owner_id, owner_name, owner_email, owner_phone,
 		       emergency_contact_name, emergency_contact_phone, released_at, created_at,
 		       has_will, COALESCE(will_location_type,''), COALESCE(will_location_address,''),
 		       COALESCE(will_location_description,''), will_updated_at,
+		       has_trust, COALESCE(trust_location_type,''), COALESCE(trust_location_address,''),
+		       COALESCE(trust_location_description,''), trust_updated_at,
 		       has_power_of_attorney, COALESCE(poa_location_type,''), COALESCE(poa_location_address,''),
 		       COALESCE(poa_location_description,''), poa_updated_at,
 		       has_health_care_directive, COALESCE(health_care_location_type,''), COALESCE(health_care_location_address,''),
@@ -417,6 +427,8 @@ func loadVault(ctx context.Context, d *Deps, vaultID string) (*models.Vault, err
 		&v.EmergencyContactName, &v.EmergencyContactPhone, &v.ReleasedAt, &v.CreatedAt,
 		&v.Will.HasWill, &v.Will.LocationType, &v.Will.LocationAddress,
 		&v.Will.LocationDescription, &v.Will.UpdatedAt,
+		&trust.HasDocument, &trust.LocationType, &trust.LocationAddress,
+		&trust.LocationDescription, &trust.UpdatedAt,
 		&poa.HasDocument, &poa.LocationType, &poa.LocationAddress,
 		&poa.LocationDescription, &poa.UpdatedAt,
 		&health.HasDocument, &health.LocationType, &health.LocationAddress,
@@ -431,7 +443,7 @@ func loadVault(ctx context.Context, d *Deps, vaultID string) (*models.Vault, err
 		return nil, err
 	}
 	v.Members = members
-	v.Documents = documentsFromFields(v.Will, poa, health)
+	v.Documents = documentsFromFields(v.Will, trust, poa, health)
 
 	attachments, err := listVaultAttachments(ctx, d, vaultID)
 	if err != nil {
@@ -503,6 +515,19 @@ func documentSpecFor(documentType string) (documentSpec, bool) {
 				WHERE id = $6
 			`,
 		}, true
+	case models.SectionTrust:
+		return documentSpec{
+			documentType: models.SectionTrust,
+			updateSQL: `
+				UPDATE vaults SET
+					has_trust = $1,
+					trust_location_type = $2,
+					trust_location_address = $3,
+					trust_location_description = $4,
+					trust_updated_at = $5
+				WHERE id = $6
+			`,
+		}, true
 	case "power_of_attorney":
 		return documentSpec{
 			documentType: "power_of_attorney",
@@ -534,16 +559,17 @@ func documentSpecFor(documentType string) (documentSpec, bool) {
 	}
 }
 
-func documentsFromFields(will models.Will, poa, health models.VaultDocument) []models.VaultDocument {
+func documentsFromFields(will models.Will, trust, poa, health models.VaultDocument) []models.VaultDocument {
 	return []models.VaultDocument{
 		{
-			Type:                "will",
+			Type:                models.SectionWill,
 			HasDocument:         will.HasWill,
 			LocationType:        will.LocationType,
 			LocationAddress:     will.LocationAddress,
 			LocationDescription: will.LocationDescription,
 			UpdatedAt:           will.UpdatedAt,
 		},
+		trust,
 		poa,
 		health,
 	}

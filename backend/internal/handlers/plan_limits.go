@@ -10,7 +10,7 @@ import (
 func (d *Deps) listPlanLimits(ctx context.Context, activeOnly bool) ([]models.PlanLimits, error) {
 	sql := `
 		SELECT plan_code, name, price_cents, cadence, display_order,
-		       max_authorized_people, allow_will, allow_power_of_attorney,
+		       max_authorized_people, allow_will, allow_trust, allow_power_of_attorney,
 		       allow_health_care_directive, allow_personal_property,
 		       allow_non_probate, allow_funeral, allow_contacts, active
 		FROM subscription_plan_limits
@@ -32,7 +32,7 @@ func (d *Deps) listPlanLimits(ctx context.Context, activeOnly bool) ([]models.Pl
 		if err := rows.Scan(
 			&limits.PlanCode, &limits.Name, &limits.PriceCents, &limits.Cadence,
 			&limits.DisplayOrder, &limits.MaxAuthorizedPeople, &limits.AllowWill,
-			&limits.AllowPowerOfAttorney, &limits.AllowHealthCareDirective,
+			&limits.AllowTrust, &limits.AllowPowerOfAttorney, &limits.AllowHealthCareDirective,
 			&limits.AllowPersonalProperty, &limits.AllowNonProbate,
 			&limits.AllowFuneral, &limits.AllowContacts, &limits.Active,
 		); err != nil {
@@ -72,7 +72,7 @@ func (d *Deps) planLimitsByCode(ctx context.Context, planCode string) (models.Pl
 	var limits models.PlanLimits
 	err := d.DB.QueryRow(ctx, `
 		SELECT plan_code, name, price_cents, cadence, display_order,
-		       max_authorized_people, allow_will, allow_power_of_attorney,
+		       max_authorized_people, allow_will, allow_trust, allow_power_of_attorney,
 		       allow_health_care_directive, allow_personal_property,
 		       allow_non_probate, allow_funeral, allow_contacts, active
 		FROM subscription_plan_limits
@@ -80,7 +80,7 @@ func (d *Deps) planLimitsByCode(ctx context.Context, planCode string) (models.Pl
 	`, planCode).Scan(
 		&limits.PlanCode, &limits.Name, &limits.PriceCents, &limits.Cadence,
 		&limits.DisplayOrder, &limits.MaxAuthorizedPeople, &limits.AllowWill,
-		&limits.AllowPowerOfAttorney, &limits.AllowHealthCareDirective,
+		&limits.AllowTrust, &limits.AllowPowerOfAttorney, &limits.AllowHealthCareDirective,
 		&limits.AllowPersonalProperty, &limits.AllowNonProbate,
 		&limits.AllowFuneral, &limits.AllowContacts, &limits.Active,
 	)
@@ -91,6 +91,8 @@ func documentAllowedByPlan(limits models.PlanLimits, documentType string) bool {
 	switch documentType {
 	case models.SectionWill:
 		return limits.AllowWill
+	case models.SectionTrust:
+		return limits.AllowTrust
 	case models.SectionPowerOfAttorney:
 		return limits.AllowPowerOfAttorney
 	case models.SectionHealthCareDirective:

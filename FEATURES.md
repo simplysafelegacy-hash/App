@@ -4,11 +4,12 @@ _Last updated: 2026-08-13_
 
 ## Documents & Sections
 
-A vault has **seven sections**, all gated by the same permission engine.
+A vault has **eight sections**, all gated by the same permission engine.
 
 **Legal documents** (single records):
 
 - Will
+- Trust
 - Power of attorney
 - Health care directive
 
@@ -21,17 +22,28 @@ A vault has **seven sections**, all gated by the same permission engine.
 
 Only the **vault owner** can add, edit, or remove content in any section.
 
+**Plan gating:** the free plan records a **will only**. The trust, power of
+attorney, health care directive, every list section, funeral wishes, and any
+authorized person require the Individual or Family plan. The two paid plans
+unlock identical sections and differ only in how many authorized people they
+allow (4 vs 15).
+
 ## Proof-based release (legal documents only)
 
-The proof-based release flow applies **only to the three legal documents** (will,
-power of attorney, health care directive) — *not* to the list/record sections.
+The proof-based release flow applies **only to the four legal documents** (will,
+trust, power of attorney, health care directive) — *not* to the list/record
+sections.
 
 If the owner has recorded one of these documents, a person with a delayed
 permission on it can upload proof that the owner is dead or incapacitated:
 
-- **Will** → proof of **death** (e.g. death certificate).
+- **Will / Trust** → proof of **death** (e.g. death certificate).
 - **Power of attorney / Health care directive** → proof of **incapacity**
   (e.g. physician certifications).
+
+Release is **per document**. Approving a death certificate against the will
+releases the will only — a successor named on the trust still needs the trust
+released, and vice versa.
 
 An admin reviews the uploaded proof and releases that document's access if
 warranted. A person can only submit a release request for a document that is
@@ -48,11 +60,12 @@ it and each submission's review status (under review / approved / rejected).
 When the owner grants a person access to a section, they choose an access model
 that depends on the section:
 
-- **Will and the list sections** (personal property, non-probate assets,
-  funeral & burial, contacts) use the **steward / successor** model:
+- **Will, trust, and the list sections** (personal property, non-probate
+  assets, funeral & burial, contacts) use the **steward / successor** model:
   - **Steward** — active access **now**.
   - **Successor** — access **after death**, once the vault (or that document) is
-    released.
+    released. The will and the trust are the two death-operative documents, so
+    they are the ones a successor typically holds.
   - A person can be one or the other for a given section, not both.
 - **Power of attorney** uses the **Power of Attorney Agent** role; **health care
   directive** uses the **Health Care Proxy** role. Each can be granted access

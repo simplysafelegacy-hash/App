@@ -97,7 +97,7 @@ export const roleDescription: Record<VaultRole, string> = {
   owner: "Holds the vault. Adds, amends, and releases its contents.",
   steward: "Trusted now. May see the vault documents and where they're kept.",
   successor:
-    "Trusted after death. Can see the will after the vault is released.",
+    "Trusted after death. Can see what they were granted — the will or the trust — after it is released.",
   poa_agent:
     "Named for the power of attorney. Access can start now or after incapacity is verified.",
   health_care_proxy:
@@ -119,12 +119,14 @@ export const accessTimingLabel: Record<AccessTiming, string> = {
 
 export const documentLabel: Record<DocumentType, string> = {
   will: "Will",
+  trust: "Trust",
   power_of_attorney: "Power of attorney",
   health_care_directive: "Health care directive",
 };
 
 export const sectionLabel: Record<VaultSection, string> = {
   will: "Will",
+  trust: "Trust",
   power_of_attorney: "Power of attorney",
   health_care_directive: "Health care directive",
   personal_property: "Personal property",
@@ -163,6 +165,8 @@ export function planAllowsDocument(
   switch (section) {
     case "will":
       return limits.allowWill;
+    case "trust":
+      return limits.allowTrust;
     case "power_of_attorney":
       return limits.allowPowerOfAttorney;
     case "health_care_directive":

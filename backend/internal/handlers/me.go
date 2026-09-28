@@ -83,18 +83,21 @@ func releasedDocumentMap(documentTypes []string) map[string]bool {
 }
 
 func listRecordedDocumentTypes(ctx context.Context, d *Deps, vaultID string) ([]string, error) {
-	var hasWill, hasPOA, hasHealth bool
+	var hasWill, hasTrust, hasPOA, hasHealth bool
 	if err := d.DB.QueryRow(ctx, `
-		SELECT has_will, has_power_of_attorney, has_health_care_directive
+		SELECT has_will, has_trust, has_power_of_attorney, has_health_care_directive
 		FROM vaults
 		WHERE id = $1
-	`, vaultID).Scan(&hasWill, &hasPOA, &hasHealth); err != nil {
+	`, vaultID).Scan(&hasWill, &hasTrust, &hasPOA, &hasHealth); err != nil {
 		return nil, err
 	}
 
 	out := []string{}
 	if hasWill {
 		out = append(out, models.SectionWill)
+	}
+	if hasTrust {
+		out = append(out, models.SectionTrust)
 	}
 	if hasPOA {
 		out = append(out, models.SectionPowerOfAttorney)

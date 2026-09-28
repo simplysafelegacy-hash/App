@@ -31,7 +31,8 @@ const maxAttachmentUploadMemory = 8 << 20
 // attach files per entry in a later phase.
 func attachmentSectionAllowed(section string) bool {
 	switch section {
-	case models.SectionWill, models.SectionPowerOfAttorney, models.SectionHealthCareDirective:
+	case models.SectionWill, models.SectionTrust,
+		models.SectionPowerOfAttorney, models.SectionHealthCareDirective:
 		return true
 	default:
 		return false

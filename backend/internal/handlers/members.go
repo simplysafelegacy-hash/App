@@ -189,8 +189,8 @@ func memberPermissionAllowedByPlan(limits models.PlanLimits, permission models.M
 // list sections. POA and health-care directives use their own roles instead.
 func stewardSuccessorSection(section string) bool {
 	switch section {
-	case models.SectionWill, models.SectionPersonalProperty, models.SectionNonProbate,
-		models.SectionFuneral, models.SectionContacts:
+	case models.SectionWill, models.SectionTrust, models.SectionPersonalProperty,
+		models.SectionNonProbate, models.SectionFuneral, models.SectionContacts:
 		return true
 	}
 	return false

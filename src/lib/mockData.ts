@@ -24,6 +24,7 @@ export const mockOwner: User = {
     displayOrder: 30,
     maxAuthorizedPeople: 15,
     allowWill: true,
+    allowTrust: true,
     allowPowerOfAttorney: true,
     allowHealthCareDirective: true,
     allowPersonalProperty: true,

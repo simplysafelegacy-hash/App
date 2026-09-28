@@ -44,6 +44,15 @@ const DOCUMENT_CONFIG: Record<
       "Owner release anytime. After death: death certificate plus license for manual name and birthday match.",
     permission: "Successor",
   },
+  trust: {
+    title: "Trust",
+    prompt: "Do you have a trust?",
+    empty: "You haven't recorded a trust yet.",
+    addLabel: "Record your trust",
+    release:
+      "Owner release anytime. After death: death certificate plus license for manual name and birthday match.",
+    permission: "Successor",
+  },
   power_of_attorney: {
     title: "Power of attorney",
     prompt: "Do you have a power of attorney?",
@@ -66,6 +75,7 @@ const DOCUMENT_CONFIG: Record<
 
 const DOCUMENT_ORDER: DocumentType[] = [
   "will",
+  "trust",
   "power_of_attorney",
   "health_care_directive",
 ];
@@ -1497,6 +1507,7 @@ function SealedAccessView({
 function isReleaseRequestDocument(section: string): section is DocumentType {
   return (
     section === "will" ||
+    section === "trust" ||
     section === "power_of_attorney" ||
     section === "health_care_directive"
   );

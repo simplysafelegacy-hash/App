@@ -244,7 +244,7 @@ func listReleaseRequestFiles(ctx context.Context, d *Deps, requestID string) ([]
 }
 
 func defaultReleaseReason(documentType string) string {
-	if documentType == "will" {
+	if documentType == models.SectionWill || documentType == models.SectionTrust {
 		return "death"
 	}
 	return "incapacitated"
@@ -252,9 +252,10 @@ func defaultReleaseReason(documentType string) string {
 
 func validReleaseRequest(documentType, reason string) bool {
 	switch documentType {
-	case "will":
+	case models.SectionWill, models.SectionTrust:
+		// Both are death-operative: the proof is a death certificate.
 		return reason == "death"
-	case "power_of_attorney", "health_care_directive":
+	case models.SectionPowerOfAttorney, models.SectionHealthCareDirective:
 		return reason == "incapacitated"
 	default:
 		return false
