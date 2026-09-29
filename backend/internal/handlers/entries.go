@@ -3,10 +3,12 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/simplysafelegacy/backend/internal/models"
@@ -110,6 +112,10 @@ func (d *Deps) CreateEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := insertBeneficiaries(r.Context(), tx, entryID, req.Beneficiaries); err != nil {
+		if errors.Is(err, errInvalidBeneficiaryMember) {
+			writeError(w, http.StatusBadRequest, "beneficiary member must belong to this vault")
+			return
+		}
 		d.internalError(w, r, err, "failed to save beneficiaries")
 		return
 	}
@@ -201,6 +207,10 @@ func (d *Deps) UpdateEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := insertBeneficiaries(r.Context(), tx, id, req.Beneficiaries); err != nil {
+		if errors.Is(err, errInvalidBeneficiaryMember) {
+			writeError(w, http.StatusBadRequest, "beneficiary member must belong to this vault")
+			return
+		}
 		d.internalError(w, r, err, "failed to save beneficiaries")
 		return
 	}
@@ -241,6 +251,8 @@ func (d *Deps) DeleteEntry(w http.ResponseWriter, r *http.Request) {
 
 // insertBeneficiaries writes the ordered beneficiary rows for an entry. Blank
 // names are skipped so an empty row in the UI does not create a ghost record.
+var errInvalidBeneficiaryMember = errors.New("beneficiary member does not belong to the vault")
+
 func insertBeneficiaries(ctx context.Context, tx pgx.Tx, entryID string, beneficiaries []models.VaultEntryBeneficiary) error {
 	for i, b := range beneficiaries {
 		name := strings.TrimSpace(b.Name)
@@ -249,15 +261,28 @@ func insertBeneficiaries(ctx context.Context, tx pgx.Tx, entryID string, benefic
 		}
 		var memberID *string
 		if b.MemberID != nil && strings.TrimSpace(*b.MemberID) != "" {
+			if _, err := uuid.Parse(*b.MemberID); err != nil {
+				return errInvalidBeneficiaryMember
+			}
 			memberID = b.MemberID
 		}
-		if _, err := tx.Exec(ctx, `
+		tag, err := tx.Exec(ctx, `
 			INSERT INTO vault_entry_beneficiaries (
 				entry_id, name, relationship, share, note, member_id, sort_order
-			) VALUES ($1, $2, $3, $4, $5, $6, $7)
+			)
+			SELECT $1, $2, $3, $4, $5, $6::uuid, $7
+			WHERE $6::uuid IS NULL OR EXISTS (
+				SELECT 1 FROM vault_members vm
+				JOIN vault_entries ve ON ve.vault_id = vm.vault_id
+				WHERE vm.id = $6::uuid AND ve.id = $1
+			)
 		`, entryID, name, strings.TrimSpace(b.Relationship), strings.TrimSpace(b.Share),
-			strings.TrimSpace(b.Note), memberID, i); err != nil {
+			strings.TrimSpace(b.Note), memberID, i)
+		if err != nil {
 			return err
+		}
+		if tag.RowsAffected() != 1 {
+			return errInvalidBeneficiaryMember
 		}
 	}
 	return nil

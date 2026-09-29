@@ -141,8 +141,11 @@ func (d *Deps) adminReviewReleaseRequest(w http.ResponseWriter, r *http.Request,
 	}
 	id := chi.URLParam(r, "id")
 	var req reviewReleaseRequestReq
-	if r.Body != nil {
-		_ = decodeBody(r, &req)
+	if r.Body != nil && r.Body != http.NoBody {
+		if err := decodeBody(r, &req); err != nil && !errors.Is(err, io.EOF) {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
 	}
 	req.Note = strings.TrimSpace(req.Note)
 

@@ -26,9 +26,13 @@
 # at boot against the remote database, gated by RUN_MIGRATIONS (default
 # true). See deploy/README-prod.md.
 
+# Requires Docker Compose 2.24.4+ for explicit port resets.
 services:
+  postgres:
+    ports: !reset []
+
   backend:
-    ports: []
+    ports: !reset []
     environment:
       # APP_ENV comes from the pushed .env (.env.dev → development,
       # .env.prod → production) rather than being hardcoded here. This
@@ -41,7 +45,7 @@ services:
       APP_ENV: ${APP_ENV:-production}
 
   frontend:
-    ports: []
+    ports: !reset []
 
   caddy:
     image: caddy:2-alpine

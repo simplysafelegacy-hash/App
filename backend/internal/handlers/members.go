@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/simplysafelegacy/backend/internal/models"
 )
@@ -105,7 +106,19 @@ func (d *Deps) CreateMember(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if err := d.checkMemberLimit(ctx, v.VaultID, req.Email, limits.MaxAuthorizedPeople); err != nil {
+	tx, err := d.DB.Begin(ctx)
+	if err != nil {
+		d.internalError(w, r, err, "could not begin membership update")
+		return
+	}
+	defer tx.Rollback(ctx)
+
+	var lockedVaultID string
+	if err := tx.QueryRow(ctx, `SELECT id FROM vaults WHERE id = $1 FOR UPDATE`, v.VaultID).Scan(&lockedVaultID); err != nil {
+		d.internalError(w, r, err, "failed to lock vault membership")
+		return
+	}
+	if err := checkMemberLimit(ctx, tx, v.VaultID, req.Email, limits.MaxAuthorizedPeople); err != nil {
 		if errors.Is(err, errPlanMemberLimit) {
 			writeError(w, http.StatusForbidden, fmt.Sprintf(
 				"your current plan allows up to %d authorized people",
@@ -122,7 +135,7 @@ func (d *Deps) CreateMember(w http.ResponseWriter, r *http.Request) {
 	// should appear in his vault switcher immediately.
 	var linkedUserID *string
 	var found string
-	err = d.DB.QueryRow(ctx, `SELECT id FROM users WHERE email = $1`, req.Email).Scan(&found)
+	err = tx.QueryRow(ctx, `SELECT id FROM users WHERE email = $1`, req.Email).Scan(&found)
 	switch {
 	case err == nil:
 		linkedUserID = &found
@@ -134,7 +147,7 @@ func (d *Deps) CreateMember(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var m models.VaultMember
-	err = d.DB.QueryRow(ctx, `
+	err = tx.QueryRow(ctx, `
 		INSERT INTO vault_members (vault_id, user_id, name, email, role, date_of_birth, access_timing)
 		VALUES ($1, $2, $3, $4, $5::vault_role, $6, $7)
 		ON CONFLICT (vault_id, email) DO UPDATE SET
@@ -162,11 +175,15 @@ func (d *Deps) CreateMember(w http.ResponseWriter, r *http.Request) {
 		d.internalError(w, r, err, "failed to create member")
 		return
 	}
-	if err := replaceMemberPermissions(ctx, d, m.ID, req.Permissions); err != nil {
+	if err := replaceMemberPermissions(ctx, tx, m.ID, req.Permissions); err != nil {
 		d.internalError(w, r, err, "failed to save member permissions")
 		return
 	}
-	m.Permissions, _ = listMemberPermissions(ctx, d, m.ID)
+	if err := tx.Commit(ctx); err != nil {
+		d.internalError(w, r, err, "failed to commit membership update")
+		return
+	}
+	m.Permissions = req.Permissions
 
 	_ = pushNotification(ctx, d, currentUserID(r), &v.VaultID, "member_added",
 		fmt.Sprintf("%s added to the vault", m.Name))
@@ -224,10 +241,16 @@ func validateMemberPermissions(permissions []models.MemberPermission) string {
 			}
 			sectionRole[permission.DocumentType] = permission.PermissionRole
 		case models.RolePOAAgent:
+			if permission.AccessTiming != models.AccessNow && permission.AccessTiming != models.AccessIncapacitated {
+				return "invalid power of attorney access timing"
+			}
 			if permission.DocumentType != models.SectionPowerOfAttorney {
 				return "power of attorney agent permission must be for power of attorney"
 			}
 		case models.RoleHealthCareProxy:
+			if permission.AccessTiming != models.AccessNow && permission.AccessTiming != models.AccessIncapacitated {
+				return "invalid health care proxy access timing"
+			}
 			if permission.DocumentType != models.SectionHealthCareDirective {
 				return "health care proxy permission must be for health care directive"
 			}
@@ -287,8 +310,15 @@ func (d *Deps) UpdateMember(w http.ResponseWriter, r *http.Request) {
 		req.AccessTiming = ""
 	}
 
+	tx, err := d.DB.Begin(r.Context())
+	if err != nil {
+		d.internalError(w, r, err, "could not begin membership update")
+		return
+	}
+	defer tx.Rollback(r.Context())
+
 	var m models.VaultMember
-	err := d.DB.QueryRow(r.Context(), `
+	err = tx.QueryRow(r.Context(), `
 		UPDATE vault_members SET
 			name = COALESCE(NULLIF($3,''), name),
 			role = COALESCE(NULLIF($4,'')::vault_role, role),
@@ -304,12 +334,20 @@ func (d *Deps) UpdateMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(req.Permissions) > 0 {
-		if err := replaceMemberPermissions(r.Context(), d, m.ID, req.Permissions); err != nil {
+		if err := replaceMemberPermissions(r.Context(), tx, m.ID, req.Permissions); err != nil {
 			d.internalError(w, r, err, "failed to save member permissions")
 			return
 		}
 	}
-	m.Permissions, _ = listMemberPermissions(r.Context(), d, m.ID)
+	if err := tx.Commit(r.Context()); err != nil {
+		d.internalError(w, r, err, "failed to commit membership update")
+		return
+	}
+	m.Permissions, err = listMemberPermissions(r.Context(), d, m.ID)
+	if err != nil {
+		d.internalError(w, r, err, "failed to load member permissions")
+		return
+	}
 	writeJSON(w, http.StatusOK, m)
 }
 
@@ -468,13 +506,7 @@ func listMemberPermissions(ctx context.Context, d *Deps, memberID string) ([]mod
 	return out, rows.Err()
 }
 
-func replaceMemberPermissions(ctx context.Context, d *Deps, memberID string, permissions []models.MemberPermission) error {
-	tx, err := d.DB.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
-
+func replaceMemberPermissions(ctx context.Context, tx pgx.Tx, memberID string, permissions []models.MemberPermission) error {
 	if _, err := tx.Exec(ctx, `DELETE FROM vault_member_permissions WHERE member_id = $1`, memberID); err != nil {
 		return err
 	}
@@ -488,7 +520,7 @@ func replaceMemberPermissions(ctx context.Context, d *Deps, memberID string, per
 			return err
 		}
 	}
-	return tx.Commit(ctx)
+	return nil
 }
 
 func validMemberRole(role string) bool {
@@ -518,9 +550,9 @@ func normalizeAccessTiming(role, timing string) string {
 
 var errPlanMemberLimit = errors.New("plan member limit reached")
 
-func (d *Deps) checkMemberLimit(ctx context.Context, vaultID, email string, maxAuthorizedPeople int) error {
+func checkMemberLimit(ctx context.Context, tx pgx.Tx, vaultID, email string, maxAuthorizedPeople int) error {
 	var existing int
-	if err := d.DB.QueryRow(ctx, `
+	if err := tx.QueryRow(ctx, `
 		SELECT COUNT(*)
 		FROM vault_members
 		WHERE vault_id = $1 AND role <> 'owner' AND email <> $2

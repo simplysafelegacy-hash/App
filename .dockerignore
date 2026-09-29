@@ -1,0 +1,14 @@
+.git
+**/.git
+.env*
+**/.env*
+node_modules
+**/node_modules
+dist
+backend
+deploy
+.codex
+.agents
+.claude
+*.pem
+*.key

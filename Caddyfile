@@ -12,7 +12,11 @@
 
     # API + Stripe webhook → Go backend.
     handle /api/* {
-        reverse_proxy backend:8080
+        reverse_proxy backend:8080 {
+            # Replace client-controlled identity headers at the trusted edge.
+            header_up -True-Client-IP
+            header_up X-Real-IP {remote_host}
+        }
     }
 
     # Everything else → the static SPA.

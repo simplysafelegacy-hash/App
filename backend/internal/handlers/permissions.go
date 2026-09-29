@@ -24,11 +24,8 @@ type CtxVault struct {
 	RecordedDocument map[string]bool
 }
 
-// CanRead reports whether the caller may see vault contents.
-//   - owner   → always
-//   - steward → always
-//   - successor → only the will, after the vault is released
-//   - POA / health proxy → their document now or after release, by timing
+// CanRead requires an explicit readable permission for every non-owner.
+// Missing permission rows must fail closed, including during invitation creation.
 func (v CtxVault) CanRead() bool {
 	if v.Role == models.RoleOwner {
 		return true
@@ -38,17 +35,7 @@ func (v CtxVault) CanRead() bool {
 			return true
 		}
 	}
-	if len(v.Permissions) > 0 {
-		return false
-	}
-	switch v.Role {
-	case models.RoleSteward:
-		return true
-	case models.RoleSuccessor:
-		return v.IsDocumentReleased("will")
-	case models.RolePOAAgent, models.RoleHealthCareProxy:
-		return v.AccessTiming == models.AccessNow || v.IsDocumentReleased(permissionDocumentForRole(v.Role))
-	}
+
 	return false
 }
 
@@ -61,22 +48,7 @@ func (v CtxVault) CanReadDocument(documentType string) bool {
 			return true
 		}
 	}
-	if len(v.Permissions) > 0 {
-		return false
-	}
-	// Fallback for members with no explicit permission rows. In practice every
-	// non-owner member is created with at least one permission, so this path is
-	// rarely hit; it stays conservative and scoped to the will.
-	switch v.Role {
-	case models.RoleSteward:
-		return documentType == models.SectionWill
-	case models.RoleSuccessor:
-		return documentType == models.SectionWill && v.IsDocumentReleased(documentType)
-	case models.RolePOAAgent:
-		return documentType == models.SectionPowerOfAttorney && (v.AccessTiming == models.AccessNow || v.IsDocumentReleased(documentType))
-	case models.RoleHealthCareProxy:
-		return documentType == models.SectionHealthCareDirective && (v.AccessTiming == models.AccessNow || v.IsDocumentReleased(documentType))
-	}
+
 	return false
 }
 
@@ -98,7 +70,7 @@ func shouldMaskVaultIdentity(
 	vaultReleased bool,
 	releasedDocuments map[string]bool,
 ) bool {
-	if role == models.RoleOwner || len(permissions) == 0 {
+	if role == models.RoleOwner {
 		return false
 	}
 	for _, p := range permissions {
@@ -137,17 +109,6 @@ func (v CtxVault) permissionCanReadDocument(p models.MemberPermission, documentT
 		return documentType == models.SectionHealthCareDirective && (p.AccessTiming == models.AccessNow || v.IsDocumentReleased(documentType))
 	}
 	return false
-}
-
-func permissionDocumentForRole(role string) string {
-	switch role {
-	case models.RolePOAAgent:
-		return "power_of_attorney"
-	case models.RoleHealthCareProxy:
-		return "health_care_directive"
-	default:
-		return "will"
-	}
 }
 
 // CanModify reports whether the caller may add, edit, or delete vault

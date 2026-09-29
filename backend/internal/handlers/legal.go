@@ -4,8 +4,9 @@ import (
 	"context"
 	"net"
 	"net/http"
-	"strings"
 	"time"
+
+	"github.com/go-chi/chi/v5/middleware"
 )
 
 // LegalDocumentVersion identifies the revision of the Terms of Service and
@@ -147,20 +148,11 @@ func (d *Deps) AcceptLegal(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, status)
 }
 
-// clientIP extracts the caller's address, preferring the proxy headers Caddy
-// sets. Returns "" when no usable address is found — the consent row's
-// ip_address is nullable precisely because this can fail.
+// clientIP uses only the header selected by router middleware after the
+// reverse proxy overwrites it. Direct calls fall back to the socket peer.
 func clientIP(r *http.Request) string {
-	// X-Forwarded-For is a comma-separated chain; the first entry is the
-	// original client.
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		first := strings.TrimSpace(strings.Split(xff, ",")[0])
-		if isIP(first) {
-			return first
-		}
-	}
-	if xr := strings.TrimSpace(r.Header.Get("X-Real-IP")); isIP(xr) {
-		return xr
+	if ip := middleware.GetClientIP(r.Context()); isIP(ip) {
+		return ip
 	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err == nil && isIP(host) {

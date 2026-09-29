@@ -16,8 +16,11 @@ import (
 func New(h *handlers.Deps, verifier *auth.Auth0Verifier, allowedOrigins []string, logger *slog.Logger) http.Handler {
 	r := chi.NewRouter()
 
+	r.Use(securityHeaders)
 	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
+	// Caddy/nginx overwrite X-Real-IP; production publishes only Caddy.
+	// Do not trust the client's True-Client-IP or arbitrary XFF chain.
+	r.Use(middleware.ClientIPFromHeader("X-Real-IP"))
 	r.Use(requestLogger(logger))
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(30 * time.Second))
@@ -41,6 +44,7 @@ func New(h *handlers.Deps, verifier *auth.Auth0Verifier, allowedOrigins []string
 
 	// requireAuth verifies an Auth0 access token and resolves the local user.
 	requireAuth := auth.Auth0Middleware(verifier, h)
+	limitUser := newUserLimiter().middleware
 
 	r.Route("/api", func(r chi.Router) {
 		// Public endpoints. Sign-in, sign-up, and password reset all happen
@@ -52,7 +56,7 @@ func New(h *handlers.Deps, verifier *auth.Auth0Verifier, allowedOrigins []string
 
 		// Authenticated, no vault scope required.
 		r.Group(func(r chi.Router) {
-			r.Use(requireAuth)
+			r.Use(requireAuth, limitUser)
 
 			r.Get("/auth/me", h.Me)
 
@@ -70,7 +74,7 @@ func New(h *handlers.Deps, verifier *auth.Auth0Verifier, allowedOrigins []string
 
 		// Platform admin operations.
 		r.Group(func(r chi.Router) {
-			r.Use(requireAuth)
+			r.Use(requireAuth, limitUser)
 			r.Use(h.AdminMiddleware)
 
 			r.Get("/admin/release-requests", h.AdminListReleaseRequests)
@@ -81,7 +85,7 @@ func New(h *handlers.Deps, verifier *auth.Auth0Verifier, allowedOrigins []string
 
 		// Authenticated + scoped to a specific vault via X-Vault-Id.
 		r.Group(func(r chi.Router) {
-			r.Use(requireAuth)
+			r.Use(requireAuth, limitUser)
 			r.Use(h.VaultMiddleware)
 
 			r.Get("/vault", h.GetVault)
@@ -112,7 +116,7 @@ func New(h *handlers.Deps, verifier *auth.Auth0Verifier, allowedOrigins []string
 
 		// Authenticated, notifications are user-global (cross-vault).
 		r.Group(func(r chi.Router) {
-			r.Use(requireAuth)
+			r.Use(requireAuth, limitUser)
 			r.Get("/notifications", h.ListNotifications)
 			r.Post("/notifications/{id}/read", h.MarkNotificationRead)
 		})
@@ -139,6 +143,7 @@ func requestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 				slog.Duration("duration", time.Since(start)),
 				slog.String("request_id", middleware.GetReqID(r.Context())),
 				slog.String("remote", r.RemoteAddr),
+				slog.String("client_ip", middleware.GetClientIP(r.Context())),
 			}
 			switch {
 			case ww.Status() >= 500:

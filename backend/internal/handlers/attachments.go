@@ -98,6 +98,7 @@ func (d *Deps) CreateAttachment(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid or oversized upload")
 		return
 	}
+	defer r.MultipartForm.RemoveAll()
 	section := strings.TrimSpace(r.FormValue("section"))
 	if !attachmentSectionAllowed(section) {
 		writeError(w, http.StatusBadRequest, "unsupported section for uploads")

@@ -19,7 +19,7 @@ No file uploads yet. That'll come back when the basics are proven.
 | Tier      | Choice                                                                                |
 | --------- | ------------------------------------------------------------------------------------- |
 | Frontend  | Vite + React 18 + TypeScript · Tailwind · shadcn primitives · Inter                   |
-| Backend   | Go 1.25 monolith · Chi router · pgx/v5 · JWT + argon2id                               |
+| Backend   | Go 1.25.13+ monolith · Chi router · pgx/v5 · Auth0 JWT verification                               |
 | Database  | PostgreSQL 16                                                                         |
 | Storage   | Amazon S3 (private bucket, SSE-KMS, EC2 instance-profile credentials)                 |
 | Billing   | Stripe Checkout + Customer Portal (hosted), webhooks for state                        |
@@ -143,8 +143,12 @@ delivery does not fail silently.
 
 ### Frontend-only (no backend)
 
+Use Node 22.12+ and npm. The npm lockfile is the maintained dependency lock.
+The production Compose overlay requires Docker Compose 2.24.4+.
+
+
 ```sh
-npm install
+npm ci
 npm run dev
 ```
 

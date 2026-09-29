@@ -16,7 +16,13 @@
 let pendingTarget: string | null = null;
 
 export function setPostLoginTarget(target: string): void {
-  pendingTarget = target;
+  const hasUnsafeCharacter = [...target].some(
+    (character) => character === "\\" || character.charCodeAt(0) <= 32,
+  );
+  pendingTarget =
+    target.startsWith("/") && !target.startsWith("//") && !hasUnsafeCharacter
+      ? target
+      : "/dashboard";
 }
 
 /** Returns the parked destination once, then forgets it. */

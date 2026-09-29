@@ -58,10 +58,7 @@ export function permissionsForVault(
   );
   const documentReleased = releasedDocuments.length > 0;
   const base = permissionsFor(role, released || documentReleased, summary?.accessTiming);
-  const canRead =
-    memberPermissions.length > 0 && role !== "owner"
-      ? hasReadablePermission
-      : base.canRead || hasReadablePermission;
+  const canRead = role === "owner" || hasReadablePermission;
   return { ...base, canRead, isSealed: Boolean(role) && !canRead };
 }
 

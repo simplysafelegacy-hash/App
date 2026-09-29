@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
@@ -153,9 +154,25 @@ func (d *Deps) internalError(w http.ResponseWriter, r *http.Request, err error, 
 const maxJSONBodyBytes = 1 << 20
 
 func decodeBody(r *http.Request, dst any) error {
-	dec := json.NewDecoder(io.LimitReader(r.Body, maxJSONBodyBytes))
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxJSONBodyBytes+1))
+	if err != nil {
+		return err
+	}
+	if len(body) > maxJSONBodyBytes {
+		return errors.New("request body too large")
+	}
+	if bytes.Equal(bytes.TrimSpace(body), []byte("null")) {
+		return errors.New("request body must be an object")
+	}
+	dec := json.NewDecoder(bytes.NewReader(body))
 	dec.DisallowUnknownFields()
-	return dec.Decode(dst)
+	if err := dec.Decode(dst); err != nil {
+		return err
+	}
+	if err := dec.Decode(new(any)); err != io.EOF {
+		return errors.New("request body must contain exactly one JSON value")
+	}
+	return nil
 }
 
 // currentUser returns the authenticated user from context, failing the

@@ -101,7 +101,7 @@ func (d *Deps) sendSupportTicket(ctx context.Context, name, email, subject, mess
 	headers := []string{
 		"To: " + to,
 		"From: " + from,
-		"Reply-To: " + email,
+		"Reply-To: " + sanitizeEmailHeader(email),
 		"Subject: [Simply Safe Legacy] " + sanitizeEmailHeader(subject),
 		"MIME-Version: 1.0",
 		"Content-Type: text/plain; charset=UTF-8",

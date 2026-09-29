@@ -2,11 +2,15 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"mime/multipart"
 	"net/http"
 	"path/filepath"
 	"strings"
+	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/simplysafelegacy/backend/internal/models"
 	"github.com/simplysafelegacy/backend/internal/storage"
@@ -25,6 +29,8 @@ const maxReleaseRequestsPerDocument = 3
 // maxReleaseFiles is the number of proof files allowed on a single submission.
 const maxReleaseFiles = 3
 
+var errReleaseRequestLimit = errors.New("release request limit reached")
+
 func (d *Deps) CreateReleaseRequest(w http.ResponseWriter, r *http.Request) {
 	v, ok := requireVault(w, r)
 	if !ok {
@@ -37,6 +43,7 @@ func (d *Deps) CreateReleaseRequest(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid or oversized upload")
 		return
 	}
+	defer r.MultipartForm.RemoveAll()
 
 	// One proof packet may cover several documents: the same physician
 	// certifications establish incapacity for both the power of attorney and
@@ -115,6 +122,10 @@ func (d *Deps) CreateReleaseRequest(w http.ResponseWriter, r *http.Request) {
 
 	req, err := d.createReleaseRequest(r.Context(), v, documentTypes, reason, note, files)
 	if err != nil {
+		if errors.Is(err, errReleaseRequestLimit) {
+			writeError(w, http.StatusForbidden, "release request submission limit reached")
+			return
+		}
 		d.internalError(w, r, err, "failed to create release request")
 		return
 	}
@@ -252,6 +263,43 @@ func (d *Deps) createReleaseRequest(
 	}
 	defer tx.Rollback(ctx)
 
+	// Serialize submissions by member and recheck the cap inside this transaction.
+	// The earlier check supports partial packets; this check closes concurrent races.
+	var memberID string
+	if err := tx.QueryRow(ctx,
+		`SELECT id FROM vault_members WHERE id = $1 AND vault_id = $2 FOR UPDATE`,
+		v.MemberID, v.VaultID).Scan(&memberID); err != nil {
+		return models.ReleaseRequest{}, err
+	}
+	for _, documentType := range documentTypes {
+		var used int
+		if err := tx.QueryRow(ctx, `
+			SELECT count(*) FROM release_requests rr
+			JOIN release_request_documents rrd ON rrd.release_request_id = rr.id
+			WHERE rr.requester_id = $1 AND rr.vault_id = $2 AND rrd.document_type = $3
+		`, memberID, v.VaultID, documentType).Scan(&used); err != nil {
+			return models.ReleaseRequest{}, err
+		}
+		if used >= maxReleaseRequestsPerDocument {
+			return models.ReleaseRequest{}, errReleaseRequestLimit
+		}
+	}
+
+	committed := false
+	var uploadedKeys []string
+	defer func() {
+		if committed || len(uploadedKeys) == 0 {
+			return
+		}
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
+		defer cancel()
+		for _, key := range uploadedKeys {
+			if err := d.Storage.Delete(cleanupCtx, d.Storage.Bucket(), key); err != nil {
+				d.Logger.Error("failed to remove uncommitted release proof", "key", key, "err", err)
+			}
+		}
+	}()
+
 	var req models.ReleaseRequest
 	err = tx.QueryRow(ctx, `
 		INSERT INTO release_requests (
@@ -283,14 +331,15 @@ func (d *Deps) createReleaseRequest(
 		if err != nil {
 			return models.ReleaseRequest{}, err
 		}
+		uploadedKeys = append(uploadedKeys, uploaded.ObjectKey)
 		var file models.ReleaseRequestFile
 		err = tx.QueryRow(ctx, `
 			INSERT INTO release_request_files (
 				release_request_id, storage_bucket, storage_key, file_name, content_type, file_size
 			) VALUES ($1, $2, $3, $4, $5, $6)
-			RETURNING id, file_name, content_type, file_size, storage_key
+			RETURNING id, file_name, content_type, file_size
 		`, req.ID, d.Storage.Bucket(), uploaded.ObjectKey, uploaded.FileName, uploaded.ContentType, uploaded.Size).Scan(
-			&file.ID, &file.FileName, &file.ContentType, &file.FileSize, &file.StorageKey,
+			&file.ID, &file.FileName, &file.ContentType, &file.FileSize,
 		)
 		if err != nil {
 			return models.ReleaseRequest{}, err
@@ -300,6 +349,7 @@ func (d *Deps) createReleaseRequest(
 	if err := tx.Commit(ctx); err != nil {
 		return models.ReleaseRequest{}, err
 	}
+	committed = true
 	return req, nil
 }
 
@@ -322,7 +372,7 @@ func (d *Deps) uploadReleaseFile(ctx context.Context, vaultID, requestID string,
 		contentType = "application/octet-stream"
 	}
 	safeName := sanitizeObjectPart(header.Filename)
-	objectKey := storage.BuildKey(vaultID, "release-requests", requestID, safeName)
+	objectKey := storage.BuildKey(vaultID, "release-requests", requestID, uuid.NewString(), safeName)
 
 	if err := d.Storage.Upload(ctx, objectKey, contentType, file, header.Size); err != nil {
 		return uploadedReleaseFile{}, err

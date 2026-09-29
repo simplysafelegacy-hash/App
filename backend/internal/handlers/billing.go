@@ -352,19 +352,12 @@ func (d *Deps) priceForPlan(plan string) (string, error) {
 	}
 }
 
-// planFromSubscription pulls the plan code we set in metadata back off
-// the subscription. Falls back to inspecting the price id against
-// configured values so a portal-driven plan change (which doesn't carry
-// our metadata) still resolves to a known plan code.
+// planFromSubscription derives entitlements from the current paid price.
+// Checkout metadata survives portal downgrades and must not grant a higher plan.
 func (d *Deps) planFromSubscription(sub *stripe.Subscription) string {
-	if sub.Metadata != nil {
-		if p := sub.Metadata["plan"]; p != "" {
-			return p
-		}
-	}
 	if sub.Items != nil {
 		for _, item := range sub.Items.Data {
-			if item == nil || item.Price == nil {
+			if item == nil || item.Price == nil || item.Price.ID == "" {
 				continue
 			}
 			switch item.Price.ID {

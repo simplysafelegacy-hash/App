@@ -383,6 +383,12 @@ func (d *Deps) ResealDocumentRelease(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// A global release overrides every document-specific seal. Never report
+	// success while the document would remain readable.
+	if v.Released {
+		writeError(w, http.StatusConflict, "re-seal the whole vault before individual documents")
+		return
+	}
 	documentType := strings.TrimSpace(chi.URLParam(r, "type"))
 	if _, ok := documentSpecFor(documentType); !ok {
 		writeError(w, http.StatusBadRequest, "unsupported document type")
