@@ -260,13 +260,12 @@ export default function Dashboard() {
                 }
                 releasedByReview={releasedDocuments.includes(document.type)}
                 canSubmitRelease={releaseRequestDocumentTypes.has(document.type)}
-                designation={designationForDocument(currentVaultSummary, document.type)}
+                releaseDocuments={releaseRequestDocuments}
+                vaultSummary={currentVaultSummary}
                 attachments={(vault.attachments ?? []).filter(
                   (a) => a.section === document.type,
                 )}
-                releaseRequests={releaseRequests.filter(
-                  (rr) => rr.documentType === document.type,
-                )}
+                releaseRequests={releaseRequests}
                 onReleaseRequestSubmitted={refreshReleaseRequests}
               />
             ))}
@@ -520,7 +519,8 @@ function DocumentCard({
   lockedMessage,
   releasedByReview,
   canSubmitRelease,
-  designation,
+  releaseDocuments,
+  vaultSummary,
   attachments,
   releaseRequests,
   onReleaseRequestSubmitted,
@@ -530,7 +530,8 @@ function DocumentCard({
   lockedMessage?: string;
   releasedByReview: boolean;
   canSubmitRelease: boolean;
-  designation?: string | null;
+  releaseDocuments: DocumentType[];
+  vaultSummary: VaultSummary;
   attachments: VaultAttachment[];
   releaseRequests: ReleaseRequest[];
   onReleaseRequestSubmitted: () => void;
@@ -659,13 +660,16 @@ function DocumentCard({
                 </CollapsibleContent>
               </Collapsible>
             )}
-            <ReleaseRequestsSummary requests={releaseRequests} />
+            <ReleaseRequestsSummary
+              requests={requestsCovering(releaseRequests, [document.type])}
+            />
             {canSubmitRelease && (
-              <ReleaseRequestForm
-                documentType={document.type}
-                designation={designation}
-                submissionsUsed={releaseRequests.length}
+              <ReleasePackets
+                documentTypes={packetPeersFor(document.type, releaseDocuments)}
+                vaultSummary={vaultSummary}
+                releaseRequests={releaseRequests}
                 onSubmitted={onReleaseRequestSubmitted}
+                hideSummary
               />
             )}
             <DocumentCopyBlock
@@ -698,13 +702,16 @@ function DocumentCard({
                 {config.addLabel}
               </button>
             )}
-            <ReleaseRequestsSummary requests={releaseRequests} />
+            <ReleaseRequestsSummary
+              requests={requestsCovering(releaseRequests, [document.type])}
+            />
             {canSubmitRelease && (
-              <ReleaseRequestForm
-                documentType={document.type}
-                designation={designation}
-                submissionsUsed={releaseRequests.length}
+              <ReleasePackets
+                documentTypes={packetPeersFor(document.type, releaseDocuments)}
+                vaultSummary={vaultSummary}
+                releaseRequests={releaseRequests}
                 onSubmitted={onReleaseRequestSubmitted}
+                hideSummary
               />
             )}
           </div>
@@ -965,6 +972,83 @@ function DocumentCopyBlock({
 
 const MAX_RELEASE_FILES = 3;
 
+type ReleaseReason = "death" | "incapacitated";
+
+/**
+ * One piece of evidence answers for every document it proves, so the release
+ * form is grouped by *proof*, not by document. A death certificate establishes
+ * death, which triggers both the will and the trust; physician certifications
+ * establish incapacity, which triggers both the power of attorney and the
+ * health care directive. Grouping this way means the submitter uploads a file
+ * once and an admin reviews the packet once.
+ *
+ * Keep the pairings in step with the backend's validReleaseRequest.
+ */
+const PROOF_GROUPS: {
+  reason: ReleaseReason;
+  documents: DocumentType[];
+  label: string;
+  hint: string;
+}[] = [
+  {
+    reason: "death",
+    documents: ["will", "trust"],
+    label: "Submit death certificate and license",
+    hint:
+      "One death certificate opens everything you were granted after death — " +
+      "the will and trust below, and any lists, funeral wishes, or contacts " +
+      "the owner shared with you.",
+  },
+  {
+    reason: "incapacitated",
+    documents: ["power_of_attorney", "health_care_directive"],
+    label: "Submit physician certifications",
+    hint: "One set of certifications covers every document below.",
+  },
+];
+
+/**
+ * Buckets the documents a caller may request release for into proof packets,
+ * dropping any group with nothing to request. Returns the documents in
+ * PROOF_GROUPS order so the UI is stable.
+ */
+function proofPacketsFor(documentTypes: DocumentType[]) {
+  const wanted = new Set(documentTypes);
+  return PROOF_GROUPS.map((group) => ({
+    ...group,
+    documents: group.documents.filter((d) => wanted.has(d)),
+  })).filter((group) => group.documents.length > 0);
+}
+
+/**
+ * The documents that share a proof packet with `documentType` and that this
+ * caller may actually submit for. Used by a single document's card so its form
+ * covers everything the same evidence proves, without claiming to release a
+ * document the caller holds no permission on.
+ */
+function packetPeersFor(
+  documentType: DocumentType,
+  submittable: DocumentType[],
+): DocumentType[] {
+  const group = PROOF_GROUPS.find((g) => g.documents.includes(documentType));
+  if (!group) return [documentType];
+  const allowed = new Set<DocumentType>([documentType, ...submittable]);
+  return group.documents.filter((d) => allowed.has(d));
+}
+
+/** Requests whose coverage set touches any of these documents. */
+function requestsCovering(
+  requests: ReleaseRequest[],
+  documents: DocumentType[],
+): ReleaseRequest[] {
+  const wanted = new Set<string>(documents);
+  return requests.filter((r) =>
+    (r.documentTypes?.length ? r.documentTypes : [r.documentType]).some((d) =>
+      wanted.has(d),
+    ),
+  );
+}
+
 /**
  * Shows the release-request submissions made against a document so anyone with
  * access to the card (owner, steward, successor, agent) can see how many proofs
@@ -1042,28 +1126,31 @@ function ReleaseRequestsSummary({ requests }: { requests: ReleaseRequest[] }) {
 }
 
 function ReleaseRequestForm({
-  documentType,
-  designation,
-  submissionsUsed,
+  documentTypes,
+  reason,
+  label,
+  hint,
+  designations,
+  requests,
   onSubmitted,
 }: {
-  documentType: DocumentType;
-  designation?: string | null;
-  submissionsUsed: number;
+  documentTypes: DocumentType[];
+  reason: ReleaseReason;
+  label: string;
+  hint: string;
+  designations: string[];
+  requests: ReleaseRequest[];
   onSubmitted: () => void;
 }) {
   const { submitReleaseRequest } = useApp();
-  const inputId = `release-files-${documentType}`;
+  const inputId = `release-files-${reason}`;
   const [files, setFiles] = useState<File[]>([]);
   const [saving, setSaving] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-  const reason = documentType === "will" ? "death" : "incapacitated";
-  const label =
-    documentType === "will"
-      ? "Submit death certificate and license"
-      : "Submit physician certifications";
+  const covers = documentTypes.map((d) => DOCUMENT_CONFIG[d].title).join(" and ");
+  const pending = requests.filter((r) => r.status === "pending").length;
   const attemptsLeft = Math.max(
-    MAX_RELEASE_REQUESTS_PER_DOCUMENT - submissionsUsed,
+    MAX_RELEASE_REQUESTS_PER_DOCUMENT - requests.length,
     0,
   );
   const atLimit = attemptsLeft <= 0;
@@ -1074,7 +1161,7 @@ function ReleaseRequestForm({
     setSaving(true);
     try {
       await submitReleaseRequest({
-        documentType,
+        documentTypes,
         releaseReason: reason,
         files,
       });
@@ -1097,7 +1184,7 @@ function ReleaseRequestForm({
     return (
       <div className="mt-5 border-t border-border pt-5">
         <p className="text-sm font-medium text-foreground">
-          {DOCUMENT_CONFIG[documentType].title}: no submissions left
+          {covers}: no submissions left
         </p>
         <p className="text-sm text-muted-foreground mt-1">
           You've used all {MAX_RELEASE_REQUESTS_PER_DOCUMENT} of your release
@@ -1111,16 +1198,34 @@ function ReleaseRequestForm({
     <form onSubmit={onSubmit} className="mt-5 border-t border-border pt-5 space-y-4">
       <div>
         <p className="text-sm font-medium text-foreground">
-          {DOCUMENT_CONFIG[documentType].title}: {label}
+          {pending > 0 ? `${covers}: proof submitted, under review` : label}
         </p>
-        <p className="text-sm text-muted-foreground mt-1">
-          Upload up to {MAX_RELEASE_FILES} images or PDFs for admin review.
-          {" "}
-          {attemptsLeft} of {MAX_RELEASE_REQUESTS_PER_DOCUMENT} submissions left.
+        {pending > 0 ? (
+          <p className="text-sm text-muted-foreground mt-1">
+            {pending === 1
+              ? "Your submission is with an admin"
+              : `${pending} of your submissions are with an admin`}{" "}
+            for review. Access opens here automatically if it's approved —
+            you don't need to send anything else unless we ask.
+            {attemptsLeft > 0 &&
+              ` If something was unclear, you can add ${attemptsLeft} more ${
+                attemptsLeft === 1 ? "submission" : "submissions"
+              }.`}
+          </p>
+        ) : (
+          <p className="text-sm text-muted-foreground mt-1">
+            {documentTypes.length > 1 ? `${hint} ` : ""}
+            Upload up to {MAX_RELEASE_FILES} images or PDFs for admin review.
+            {" "}
+            {attemptsLeft} of {MAX_RELEASE_REQUESTS_PER_DOCUMENT} submissions left.
+          </p>
+        )}
+        <p className="text-sm text-foreground mt-2">
+          Releases: {covers}
         </p>
-        {designation && (
-          <p className="text-sm text-foreground mt-2">
-            Your designation: {designation}
+        {designations.length > 0 && (
+          <p className="text-sm text-muted-foreground mt-1">
+            Your designation: {designations.join(", ")}
           </p>
         )}
       </div>
@@ -1134,7 +1239,7 @@ function ReleaseRequestForm({
         </span>
         <span className="min-w-0">
           <span className="block text-sm font-medium text-foreground">
-            Choose proof files
+            {pending > 0 ? "Add more proof files" : "Choose proof files"}
           </span>
           <span className="block text-sm text-muted-foreground">
             JPG, PNG, or PDF. Maximum {MAX_RELEASE_FILES} files.
@@ -1191,7 +1296,11 @@ function ReleaseRequestForm({
           disabled={saving || files.length === 0}
           className="btn-primary !min-h-[40px] !text-sm"
         >
-          {saving ? "Uploading..." : "Submit for review"}
+          {saving
+            ? "Uploading..."
+            : pending > 0
+              ? "Submit more proof"
+              : "Submit for review"}
         </button>
         {submitted && (
           <span className="text-sm text-muted-foreground">
@@ -1200,6 +1309,59 @@ function ReleaseRequestForm({
         )}
       </div>
     </form>
+  );
+}
+
+/**
+ * Renders the proof packets a caller may submit for. One block per kind of
+ * evidence, so the same PDF is never asked for twice.
+ */
+function ReleasePackets({
+  documentTypes,
+  vaultSummary,
+  releaseRequests,
+  onSubmitted,
+  wrapItems = false,
+  hideSummary = false,
+}: {
+  documentTypes: DocumentType[];
+  vaultSummary: VaultSummary;
+  releaseRequests: ReleaseRequest[];
+  onSubmitted: () => void;
+  wrapItems?: boolean;
+  /** Set when the caller already rendered its own submission summary. */
+  hideSummary?: boolean;
+}) {
+  return (
+    <div className="space-y-5">
+      {proofPacketsFor(documentTypes).map((packet) => {
+        const covering = requestsCovering(releaseRequests, packet.documents);
+        const designations = Array.from(
+          new Set(
+            packet.documents
+              .map((d) => designationForDocument(vaultSummary, d))
+              .filter((label): label is string => Boolean(label)),
+          ),
+        );
+        return (
+          <div
+            key={packet.reason}
+            className={wrapItems ? "card-surface p-5 md:p-6" : undefined}
+          >
+            {!hideSummary && <ReleaseRequestsSummary requests={covering} />}
+            <ReleaseRequestForm
+              documentTypes={packet.documents}
+              reason={packet.reason}
+              label={packet.label}
+              hint={packet.hint}
+              designations={designations}
+              requests={covering}
+              onSubmitted={onSubmitted}
+            />
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -1227,24 +1389,12 @@ function ReleaseAccessCard({
         You have another delayed permission on this vault. Submit proof for
         admin review to release that document section.
       </p>
-      <div className="space-y-5">
-        {documentTypes.map((documentType) => {
-          const forDoc = releaseRequests.filter(
-            (rr) => rr.documentType === documentType,
-          );
-          return (
-            <div key={documentType}>
-              <ReleaseRequestsSummary requests={forDoc} />
-              <ReleaseRequestForm
-                documentType={documentType}
-                designation={designationForDocument(vaultSummary, documentType)}
-                submissionsUsed={forDoc.length}
-                onSubmitted={onReleaseRequestSubmitted}
-              />
-            </div>
-          );
-        })}
-      </div>
+      <ReleasePackets
+        documentTypes={documentTypes}
+        vaultSummary={vaultSummary}
+        releaseRequests={releaseRequests}
+        onSubmitted={onReleaseRequestSubmitted}
+      />
     </section>
   );
 }
@@ -1477,24 +1627,13 @@ function SealedAccessView({
         </p>
         {documents.length > 0 && (
           <div className="mt-8 text-left">
-            <div className="space-y-5">
-              {documents.map((documentType) => {
-                const forDoc = releaseRequests.filter(
-                  (rr) => rr.documentType === documentType,
-                );
-                return (
-                  <div key={documentType} className="card-surface p-5 md:p-6">
-                    <ReleaseRequestsSummary requests={forDoc} />
-                    <ReleaseRequestForm
-                      documentType={documentType}
-                      designation={designationForDocument(vaultSummary, documentType)}
-                      submissionsUsed={forDoc.length}
-                      onSubmitted={onReleaseRequestSubmitted}
-                    />
-                  </div>
-                );
-              })}
-            </div>
+            <ReleasePackets
+              documentTypes={documents}
+              vaultSummary={vaultSummary}
+              releaseRequests={releaseRequests}
+              onSubmitted={onReleaseRequestSubmitted}
+              wrapItems
+            />
           </div>
         )}
       </div>

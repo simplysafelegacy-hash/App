@@ -167,11 +167,31 @@ Replaces the app's old direct Google OAuth integration.
 
 Use your existing Google OAuth client (the same one from the old
 `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`) — but add Auth0's callback to it
-in the Google Cloud Console:
+in the Google Cloud Console.
+
+**APIs & Services → Credentials → (Web application client) → Authorized
+redirect URIs.** One entry per tenant:
 
 ```
-https://YOUR_TENANT.us.auth0.com/login/callback
+https://production-simplysafelegacy.us.auth0.com/login/callback
+https://dev-ysl8x41b1528l262.us.auth0.com/login/callback
 ```
+
+**Authorized JavaScript origins: leave empty.** The browser never calls Google
+directly — that was the old `GoogleSignInButton`, removed in the Auth0 move.
+The chain is Google → Auth0 → the SPA, and only the middle hop is Google's
+business, so this app's own domains do not belong in Google's config at all.
+They go in Auth0's Allowed Callback URLs (§3) instead.
+
+> **Developer keys.** If the Client ID / Secret fields under *Authentication →
+> Social → Google* are blank, that connection is running on Auth0's shared
+> developer keys. They work with no Google Cloud setup, which is why Google
+> sign-in can appear to work before any of the above is done — but they carry
+> shared rate limits and their consent screen reads "to continue to
+> **auth0.com**". Fine for dev, not for production.
+>
+> If Auth0 ever moves behind a custom domain, the callback becomes
+> `https://<custom-domain>/login/callback` and Google needs updating too.
 
 Enable the connection for the SPA application. Google sign-ins arrive with a
 subject like `google-oauth2|1234…` and are stored in `users.auth0_sub` the

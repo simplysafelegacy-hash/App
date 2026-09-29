@@ -284,13 +284,17 @@ export const api = {
   releaseRequests: {
     list: () => request<ReleaseRequest[]>("/vault/release-requests", { vaultScoped: true }),
     create: (data: {
-      documentType: string;
+      documentTypes: string[];
       releaseReason: string;
       note?: string;
       files: File[];
     }) => {
       const form = new FormData();
-      form.set("documentType", data.documentType);
+      // Repeated field: one packet of proof can cover several documents. The
+      // first is also sent as `documentType` so the row keeps a representative
+      // value and any older handler still understands the request.
+      data.documentTypes.forEach((type) => form.append("documentTypes", type));
+      form.set("documentType", data.documentTypes[0] ?? "");
       form.set("releaseReason", data.releaseReason);
       if (data.note) form.set("note", data.note);
       data.files.forEach((file) => form.append("files", file));

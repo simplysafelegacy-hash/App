@@ -4,7 +4,11 @@ import { Check, Download, ExternalLink, RefreshCw, X } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
 import { useApp } from "@/context/AppContext";
 import { api, ApiError } from "@/lib/api";
-import type { AdminReleaseRequest, AdminReleaseRequestFile } from "@/lib/types";
+import type {
+  AdminReleaseRequest,
+  AdminReleaseRequestFile,
+  DocumentType,
+} from "@/lib/types";
 import { documentLabel } from "@/lib/permissions";
 
 type ReviewStatus = "pending" | "approved" | "rejected" | "all";
@@ -15,6 +19,22 @@ const statusLabels: Record<ReviewStatus, string> = {
   rejected: "Rejected",
   all: "All",
 };
+
+/**
+ * Every document one proof packet covers. Older requests (and any written
+ * before the coverage table existed) carry a single documentType.
+ */
+function coveredDocuments(request: AdminReleaseRequest): DocumentType[] {
+  return request.documentTypes?.length
+    ? request.documentTypes
+    : [request.documentType];
+}
+
+function coveredDocumentLabels(request: AdminReleaseRequest): string {
+  return coveredDocuments(request)
+    .map((type) => documentLabel[type])
+    .join(" + ");
+}
 
 export default function AdminReleaseRequests() {
   const { currentUser, isAuthenticated, loading } = useApp();
@@ -149,7 +169,7 @@ export default function AdminReleaseRequests() {
                       }`}
                     >
                       <p className="text-sm font-medium text-foreground">
-                        {documentLabel[request.documentType]}
+                        {coveredDocumentLabels(request)}
                       </p>
                       <p className="text-xs text-muted-foreground mt-1">
                         {request.vaultName}
@@ -207,8 +227,23 @@ function ReviewDetail({
             {request.releaseReason === "death" ? "Death release" : "Incapacity release"}
           </p>
           <h2 className="text-xl font-semibold">
-            {documentLabel[request.documentType]}
+            {coveredDocumentLabels(request)}
           </h2>
+          {request.releaseReason === "death" ? (
+            <p className="text-sm text-muted-foreground mt-1">
+              Death is a fact about the person, so approving opens every
+              after-death grant on this vault — the will and trust, and any
+              lists, funeral wishes, or contacts the owner shared. People
+              without a permission on a section still see nothing.
+            </p>
+          ) : (
+            coveredDocuments(request).length > 1 && (
+              <p className="text-sm text-muted-foreground mt-1">
+                Approving releases all {coveredDocuments(request).length}{" "}
+                sections from this one submission.
+              </p>
+            )
+          )}
           <p className="text-sm text-muted-foreground mt-1">
             Submitted {new Date(request.createdAt).toLocaleString()}
           </p>

@@ -103,6 +103,19 @@ These four list/record sections all work the same way:
 - Only the **vault owner** can add, edit, and remove entries.
 - Access is granted per-section via a **steward (now)** or **successor (after
   death)** permission, exactly like the will.
-- They do **not** participate in the proof-based release / admin-review flow —
-  access is governed purely by the permission's timing and the vault's release
-  state.
+- They do not have a proof form of their own, but they **are** released by the
+  death-certificate flow. Death is a fact about the person, so an approved
+  death release opens every after-death grant on the vault: will, trust,
+  personal property, non-probate assets, funeral wishes and contacts.
+
+  This matters because nothing else ever releases them. The owner is the only
+  other releaser, and they cannot act once dead — so before this, an
+  after-death grant on one of these four sections was grantable in the member
+  picker but permanently unreachable.
+
+  An approved **incapacity** release stays narrow by contrast: it opens only
+  the power of attorney and health care directive, and says nothing about the
+  will or the lists.
+
+  Releasing a section grants nothing by itself — `CanReadDocument` still
+  requires the caller to hold a permission on it.

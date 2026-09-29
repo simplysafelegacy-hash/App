@@ -154,7 +154,8 @@ export interface ReleaseRequestFile {
   fileName: string;
   contentType: string;
   fileSize: number;
-  storageKey: string;
+  /** Admin responses only — the member-facing list omits the object key. */
+  storageKey?: string;
 }
 
 export interface ReleaseRequest {
@@ -162,6 +163,8 @@ export interface ReleaseRequest {
   vaultId: string;
   requesterId: string;
   documentType: DocumentType;
+  /** Every document this one proof packet covers; approval releases all. */
+  documentTypes?: DocumentType[];
   releaseReason: "death" | "incapacitated";
   status: "pending" | "approved" | "rejected";
   note: string;
@@ -326,6 +329,7 @@ export interface AdminReleaseRequest {
   requesterEmail: string;
   requesterDateOfBirth: string;
   documentType: DocumentType;
+  documentTypes?: DocumentType[];
   releaseReason: "death" | "incapacitated";
   status: "pending" | "approved" | "rejected";
   note: string;

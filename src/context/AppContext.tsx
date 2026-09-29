@@ -91,7 +91,7 @@ interface AppContextType {
     },
   ) => Promise<void>;
   submitReleaseRequest: (data: {
-    documentType: DocumentType;
+    documentTypes: DocumentType[];
     releaseReason: "death" | "incapacitated";
     note?: string;
     files: File[];
@@ -627,7 +627,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const submitReleaseRequest = useCallback(
     async (data: {
-      documentType: DocumentType;
+      documentTypes: DocumentType[];
       releaseReason: "death" | "incapacitated";
       note?: string;
       files: File[];
@@ -638,7 +638,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           id: `release-${Date.now()}`,
           vaultId: vault.id,
           requesterId: "",
-          documentType: data.documentType,
+          documentType: data.documentTypes[0],
+          documentTypes: data.documentTypes,
           releaseReason: data.releaseReason,
           status: "pending",
           note: data.note ?? "",

@@ -24,6 +24,7 @@ type adminReleaseRequest struct {
 	RequesterEmail  string                    `json:"requesterEmail"`
 	RequesterDOB    string                    `json:"requesterDateOfBirth"`
 	DocumentType    string                    `json:"documentType"`
+	DocumentTypes   []string                  `json:"documentTypes,omitempty"`
 	ReleaseReason   string                    `json:"releaseReason"`
 	Status          string                    `json:"status"`
 	Note            string                    `json:"note"`
@@ -114,6 +115,12 @@ func (d *Deps) AdminListReleaseRequests(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 		req.Files = files
+		documentTypes, err := listReleaseRequestDocumentTypes(r.Context(), d, req.ID)
+		if err != nil {
+			d.internalError(w, r, err, "failed to list release request documents")
+			return
+		}
+		req.DocumentTypes = documentTypes
 		out = append(out, req)
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -167,17 +174,24 @@ func (d *Deps) adminReviewReleaseRequest(w http.ResponseWriter, r *http.Request,
 	reviewed.ReviewedAt = reviewedAt
 
 	if status == "approved" {
-		if _, err := tx.Exec(r.Context(), `
-			INSERT INTO vault_document_releases (
-				vault_id, document_type, release_request_id, released_by
-			) VALUES ($1, $2, $3, $4)
-			ON CONFLICT (vault_id, document_type) DO UPDATE SET
-				release_request_id = EXCLUDED.release_request_id,
-				released_by = EXCLUDED.released_by,
-				released_at = NOW()
-		`, reviewed.VaultID, reviewed.DocumentType, reviewed.ID, u.ID); err != nil {
-			d.internalError(w, r, err, "failed to release document")
+		released, err := d.sectionsToRelease(r.Context(), reviewed.ID, reviewed.DocumentType, reviewed.ReleaseReason)
+		if err != nil {
+			d.internalError(w, r, err, "failed to resolve released sections")
 			return
+		}
+		for _, documentType := range released {
+			if _, err := tx.Exec(r.Context(), `
+				INSERT INTO vault_document_releases (
+					vault_id, document_type, release_request_id, released_by
+				) VALUES ($1, $2, $3, $4)
+				ON CONFLICT (vault_id, document_type) DO UPDATE SET
+					release_request_id = EXCLUDED.release_request_id,
+					released_by = EXCLUDED.released_by,
+					released_at = NOW()
+			`, reviewed.VaultID, documentType, reviewed.ID, u.ID); err != nil {
+				d.internalError(w, r, err, "failed to release documents")
+				return
+			}
 		}
 	}
 
@@ -226,6 +240,33 @@ func (d *Deps) AdminDownloadReleaseRequestFile(w http.ResponseWriter, r *http.Re
 	_, _ = io.Copy(w, body)
 }
 
+// sectionsToRelease is what an approval actually unseals.
+//
+//   - reason "death": every death-operative section, because death is a fact
+//     about the person. Any after-death grant the owner made now activates.
+//     Rows for sections nobody holds a permission on are harmless —
+//     CanReadDocument still requires a matching permission — so this widens
+//     nothing beyond what the owner already granted.
+//   - reason "incapacitated": only the documents the packet covered. Incapacity
+//     is document-specific: it speaks to the power of attorney and the health
+//     care directive, and says nothing about the will.
+//
+// The coverage-row lookup falls back to the request's own document_type so a
+// request written before migration 019 still releases what it named.
+func (d *Deps) sectionsToRelease(ctx context.Context, requestID, documentType, reason string) ([]string, error) {
+	if reason == "death" {
+		return deathOperativeSections(), nil
+	}
+	covered, err := listReleaseRequestDocumentTypes(ctx, d, requestID)
+	if err != nil {
+		return nil, err
+	}
+	if len(covered) == 0 {
+		return []string{documentType}, nil
+	}
+	return covered, nil
+}
+
 func (d *Deps) loadAdminReleaseRequest(ctx context.Context, id string) (adminReleaseRequest, error) {
 	row := d.DB.QueryRow(ctx, `
 		SELECT rr.id, rr.vault_id, v.name, v.owner_name, v.owner_email,
@@ -248,6 +289,11 @@ func (d *Deps) loadAdminReleaseRequest(ctx context.Context, id string) (adminRel
 		return adminReleaseRequest{}, err
 	}
 	req.Files = files
+	documentTypes, err := listReleaseRequestDocumentTypes(ctx, d, req.ID)
+	if err != nil {
+		return adminReleaseRequest{}, err
+	}
+	req.DocumentTypes = documentTypes
 	return req, nil
 }
 

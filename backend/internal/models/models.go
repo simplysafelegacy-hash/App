@@ -167,14 +167,18 @@ type ReleaseRequestFile struct {
 	FileName    string `json:"fileName"`
 	ContentType string `json:"contentType"`
 	FileSize    int64  `json:"fileSize"`
-	StorageKey  string `json:"storageKey"`
+	// Omitted from member-facing responses; the admin view carries its own.
+	StorageKey string `json:"storageKey,omitempty"`
 }
 
 type ReleaseRequest struct {
-	ID            string               `json:"id"`
-	VaultID       string               `json:"vaultId"`
-	RequesterID   string               `json:"requesterId"`
-	DocumentType  string               `json:"documentType"`
+	ID           string `json:"id"`
+	VaultID      string `json:"vaultId"`
+	RequesterID  string `json:"requesterId"`
+	DocumentType string `json:"documentType"`
+	// DocumentTypes is every document this one proof packet covers.
+	// Approval releases all of them.
+	DocumentTypes []string             `json:"documentTypes,omitempty"`
 	ReleaseReason string               `json:"releaseReason"`
 	Status        string               `json:"status"`
 	Note          string               `json:"note"`
